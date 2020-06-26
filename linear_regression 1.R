@@ -48,7 +48,7 @@ data2 <- data1
 data2$prediction <- predict(step.model, data1)
 data2 %>% 
   filter(Rent<prediction) %>%
-  arrange(desc(prediction-Rent))
+  arrange(desc(prediction/Rent-1))
 
 # Scaled
 # Prepare data
