@@ -24,6 +24,15 @@ skim(data)
 
 data1 <- data %>% 
   mutate(
+    Type = factor(ifelse(grepl('^Piso\\sen', Address), 'Piso',
+                  ifelse(grepl('^Ático\\sen', Address), 'Ático',
+                  ifelse(grepl('^Dúplex\\sen', Address), 'Dúplex',
+                  ifelse(grepl('^Estudio\\sen', Address), 'Estudio',
+                  ifelse(grepl('^Chalet\\spareado\\sen', Address), 'Chalet pareado',
+                  ifelse(grepl('^Chalet\\sadosado\\sen', Address), 'Chalet adosado',
+                  ifelse(grepl('^Caserón\\sen', Address), 'Caserón',
+                  ifelse(grepl('^Casa\\so\\schalet\\sindependiente\\sen', Address), 'Casa o chalet independiente',
+                  ifelse(grepl('^Chalet\\sen', Address), 'Chalet', 'Other')))))))))),
     Outer = factor(Outer, levels = c(0, 1), labels = c('No', 'Yes')),
     Elevator = factor(Elevator, levels = c(0, 1), labels = c('No', 'Yes')),
     Penthouse = factor(Penthouse, levels = c(0, 1), labels = c('No', 'Yes')),
@@ -31,7 +40,7 @@ data1 <- data %>%
     Duplex = factor(Duplex, levels = c(0, 1), labels = c('No', 'Yes')),
     Semidetached = factor(Semidetached, levels = c(0, 1), labels = c('No', 'Yes'))
   ) %>% 
-  dplyr::select(-Number, -Address, -Id, -Area, -District) %>%
+  dplyr::select(-Id, -Address, -Number, -Area) %>% #District
   # filter_at(vars(Area, Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.)))
   filter_at(vars(Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.)))
 skim(data1)
@@ -75,7 +84,7 @@ pdata <- as.numeric(pdata>0.5)
 pdata <- factor(pdata, levels = c(0, 1), labels = c('Cheap', 'Expensive'))
 
 # Confusion matrix
-caret::confusionMatrix(data = pdata, reference = data2$Rent)
+caret::confusionMatrix(data = pdata, reference = data2$Rent, positive = 'Expensive')
 # Economic table
 table(data = pdata, reference = data2$Rent) * matrix(c(1,0,1,0), ncol = 2, nrow = 2)
 

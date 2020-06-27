@@ -35,12 +35,14 @@ skim(data1)
 
 # Fit full model
 # full.model <- glm(Rent ~ ., data = data1)
-full.model <- lm(Rent ~ ., data = data1)
+# https://stats.stackexchange.com/questions/181113/is-there-any-difference-between-lm-and-glm-for-the-gaussian-family-of-glm
+# full.model1 <- lm(Rent ~ ., data = data1)
+full.model <- glm(Rent ~ ., data = data1, family = gaussian(link = "identity"))
 summary(full.model)
+
 # Step model
 step.model <- full.model %>% 
   stepAIC(trace = FALSE)
-# coef(step.model)
 summary(step.model)
 
 ## Find good opportunities in the market looking for flats that may be under their theoretical estimated price ----
@@ -51,43 +53,32 @@ data2 %>%
   arrange(desc(prediction/Rent-1))
 
 # Scaled
-# Prepare data
 data2 <- data1 %>% 
   mutate_if(is.numeric, scale)
-step.model_scaled <- lm(Rent ~ ., data = data2)
+step.model_scaled <- glm(formula(step.model), data = data2, family = gaussian(link = "identity"))
 summary(step.model_scaled)
 
+## Complete summary ----
+summary_unit <- summary(step.model)$coefficients %>% 
+  data.frame() %>% 
+  rownames_to_column()
+summary_scaled <- summary(step.model_scaled)$coefficients %>% 
+  data.frame() %>% 
+  rownames_to_column() %>% 
+  rename_all(function(x) paste(x, 'scaled', sep = '_'))
+bind_cols(summary_unit,
+          dplyr::select(summary_scaled, all_of(c('Estimate_scaled', 'Std..Error_scaled', 't.value_scaled'))))
 
-
-
-
-
-## Case in the PPT ----
-data <- read_excel(path = file.path('data', 'wage.xlsx'), sheet = 1)
-
-# Maintaining units
-full.model <- lm(WAGE ~ AFROAMERICAN + AGE + EDUC + EXPER + HOURS + MARRIED + SIBS + BRTHORD, data = data)
-summary(full.model)
-# Scaled
-data2 <- data %>% 
-  mutate_if(is.numeric, scale)
-full.model <- lm(WAGE ~ AFROAMERICAN + AGE + EDUC + EXPER + HOURS + MARRIED + SIBS + BRTHORD, data = data2)
-summary(full.model)
-summary(full.model)$coefficients[, 'Estimate']
-
-
-logit_table <- function(x, level = 0.95) {
+regression_table <- function(x, level = 0.95) {
   table <- cbind(
     summary(x)$coefficients,
-    exp(coefficients(x)),
-    exp(confint.default(x, level = level)))
-  # colnames(table)[1] <- "Variable"
-  colnames(table)[5] <- "Exp(Beta)"
+    summary(step.model_scaled)$coefficients[, 'Estimate'],
+    confint.default(x, level = level))
+  colnames(table)[5] <- "Estimate Std."
   return(table)
 }
 
-logit_table(step.model)
-
+regression_table(step.model)
 
 ## Geolocalization ----
 
@@ -116,3 +107,25 @@ data4 <- data %>%
 
 d <- lapply(data4$pos[1:3], nominatim_osm) %>% 
   bind_rows()
+
+
+
+
+
+
+
+
+
+
+## Case in the PPT ----
+data <- read_excel(path = file.path('data', 'wage.xlsx'), sheet = 1)
+
+# Maintaining units
+full.model <- lm(WAGE ~ AFROAMERICAN + AGE + EDUC + EXPER + HOURS + MARRIED + SIBS + BRTHORD, data = data)
+summary(full.model)
+# Scaled
+data2 <- data %>% 
+  mutate_if(is.numeric, scale)
+full.model <- lm(WAGE ~ AFROAMERICAN + AGE + EDUC + EXPER + HOURS + MARRIED + SIBS + BRTHORD, data = data2)
+summary(full.model)
+summary(full.model)$coefficients[, 'Estimate']
