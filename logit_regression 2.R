@@ -84,7 +84,22 @@ pdata <- as.numeric(pdata>0.5)
 pdata <- factor(pdata, levels = c(0, 1), labels = c('Cheap', 'Expensive'))
 
 # Confusion matrix
-caret::confusionMatrix(data = pdata, reference = data2$Rent, positive = 'Expensive')
+caret::confusionMatrix(data = pdata, reference = data2$Rent, positive = 'Cheap')
 # Economic table
 table(data = pdata, reference = data2$Rent) * matrix(c(1,0,1,0), ncol = 2, nrow = 2)
+matrix(c(1,0,1,0), ncol = 2, nrow = 2)
 
+## Looking for the optimal value of threshold ----
+# https://stats.stackexchange.com/questions/110969/using-the-caret-package-is-it-possible-to-obtain-confusion-matrices-for-specific
+# https://community.rstudio.com/t/how-to-choose-best-threshold-value-automatically/12910
+library(pROC)
+probsTrain <- predict(step.model, newdata = data2)
+rocCurve <- roc(response = data2$Rent, predictor = probsTrain, levels = levels(data2$Rent))
+plot(rocCurve, print.thres = "best", main = 'Houses for rent in madrid')
+
+# Optimal from ROC curve
+pROC::coords(rocCurve, "best", input = "threshold", transpose = FALSE)
+coords(rocCurve, "best", ret = "all", transpose = FALSE)
+
+# All the points of the curve
+coords(rocCurve, seq(0,1, by = 0.1), ret = 'all', transpose = FALSE)
