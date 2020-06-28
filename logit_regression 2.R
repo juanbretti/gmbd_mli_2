@@ -76,11 +76,27 @@ logit_table <- function(x, level = 0.95) {
 
 logit_table(step.model)
 
+## Looking for the optimal value of threshold ----
+# https://stats.stackexchange.com/questions/110969/using-the-caret-package-is-it-possible-to-obtain-confusion-matrices-for-specific
+# https://community.rstudio.com/t/how-to-choose-best-threshold-value-automatically/12910
+library(pROC)
+probsTrain <- predict(step.model, newdata = data2)
+rocCurve <- roc(response = data2$Rent, predictor = probsTrain, levels = levels(data2$Rent))
+plot(rocCurve, print.thres = "best", main = 'Houses for rent in madrid')
+# max(sensitivities + specificities)
+
+# Optimal from ROC curve
+# pROC::coords(rocCurve, "best", input = "threshold", transpose = FALSE)
+ROC_best <- coords(rocCurve, "best", ret = "all", transpose = FALSE)
+print(ROC_best)
+# All the points of the curve
+coords(rocCurve, seq(0,1, by = 0.1), ret = 'all', transpose = FALSE)
+
 ## Confusion matrix ----
 
 # Define threshold
 pdata <- predict(step.model, newdata = data2, type = "response")
-pdata <- as.numeric(pdata>0.5)
+pdata <- as.numeric(pdata>=ROC_best$threshold)
 pdata <- factor(pdata, levels = c(0, 1), labels = c('Cheap', 'Expensive'))
 
 # Confusion matrix
@@ -89,17 +105,22 @@ caret::confusionMatrix(data = pdata, reference = data2$Rent, positive = 'Cheap')
 table(data = pdata, reference = data2$Rent) * matrix(c(1,0,1,0), ncol = 2, nrow = 2)
 matrix(c(1,0,1,0), ncol = 2, nrow = 2)
 
-## Looking for the optimal value of threshold ----
-# https://stats.stackexchange.com/questions/110969/using-the-caret-package-is-it-possible-to-obtain-confusion-matrices-for-specific
-# https://community.rstudio.com/t/how-to-choose-best-threshold-value-automatically/12910
-library(pROC)
-probsTrain <- predict(step.model, newdata = data2)
-rocCurve <- roc(response = data2$Rent, predictor = probsTrain, levels = levels(data2$Rent))
-plot(rocCurve, print.thres = "best", main = 'Houses for rent in madrid')
+## Imbalance ----
+# F0.5 calculated as: 1.25*(recall*precision/(0.25*precision+recall))
+# https://stats.stackexchange.com/questions/49226/how-to-interpret-f-measure-values
+# https://machinelearningmastery.com/tour-of-evaluation-metrics-for-imbalanced-classification/
+# https://stats.stackexchange.com/a/207371/80897
 
-# Optimal from ROC curve
-pROC::coords(rocCurve, "best", input = "threshold", transpose = FALSE)
-coords(rocCurve, "best", ret = "all", transpose = FALSE)
+library(mltest)
+ml_test(pdata, data2$Rent, output.as.table = TRUE)['Cheap', 'F0.5']
 
-# All the points of the curve
-coords(rocCurve, seq(0,1, by = 0.1), ret = 'all', transpose = FALSE)
+optimal_value <- function(x, measure = 'F0.5') {
+  pdata <- predict(step.model, newdata = data2, type = "response")
+  pdata <- as.numeric(pdata>=x)
+  pdata <- factor(pdata, levels = c(0, 1), labels = c('Cheap', 'Expensive'))
+  out <- ml_test(pdata, data2$Rent, output.as.table = TRUE)['Cheap', measure]
+  return(out)
+}
+
+optimize(optimal_value, interval=c(0, 1), maximum=TRUE)
+optimize(optimal_value, interval=c(0, 1), maximum=TRUE, measure = 'F2')
