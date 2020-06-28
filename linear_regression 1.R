@@ -49,7 +49,7 @@ summary(step.model)
 data2 <- data1
 data2$prediction <- predict(step.model, data1)
 data2 %>% 
-  filter(Rent<prediction) %>%
+  # filter(Rent<prediction) %>%
   arrange(desc(prediction/Rent-1))
 
 # Scaled
@@ -105,17 +105,12 @@ data4 <- data %>%
   mutate(pos = gsub(".*\\sen\\s","", Address),
          pos = paste(pos, ifelse(is.na(Number), 1, Number), 'Madrid', 'Spain', sep = ', '))
 
-d <- lapply(data4$pos[1:3], nominatim_osm) %>% 
-  bind_rows()
-
-
-
-
-
-
-
-
-
+# system.time({
+#   data_geopos <- lapply(data4$pos, nominatim_osm) %>% 
+#     bind_rows()
+# })
+# saveRDS(object = data_geopos, file = file.path('storage', 'data_geopos.RData'))
+data_geopos <- readRDS(file = file.path('storage', 'data_geopos.RData'))
 
 ## Case in the PPT ----
 data <- read_excel(path = file.path('data', 'wage.xlsx'), sheet = 1)

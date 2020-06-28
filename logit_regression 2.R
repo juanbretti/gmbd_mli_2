@@ -127,6 +127,32 @@ pdata <- factor(pdata, levels = c(0, 1), labels = c('Cheap', 'Expensive'))
 
 # Confusion matrix
 caret::confusionMatrix(data = pdata, reference = data2$Rent, positive = 'Cheap')
-# Economic table
-table(data = pdata, reference = data2$Rent) * matrix(c(1,0,1,0), ncol = 2, nrow = 2)
-matrix(c(1,0,1,0), ncol = 2, nrow = 2)
+
+## Optimal using weights
+
+optimal_value <- function(x, m = c(1,1,5,10)) {
+  # Using the threshold
+  pdata <- predict(step.model, newdata = data2, type = "response")
+  pdata <- as.numeric(pdata>=x)
+  pdata <- factor(pdata, levels = c(0, 1), labels = c('Cheap', 'Expensive'))
+  # Economic table
+  table_adjusted <- table(data = pdata, reference = data2$Rent) * matrix(m, ncol = 2, nrow = 2)
+  # Measurements
+  TP <- diag(table_adjusted)
+  FP <- rowSums(table_adjusted) - TP
+  FN <- colSums(table_adjusted) - TP
+  TN <- sapply(1:length(TP), function(y, TP) {
+    sum(TP[-y], na.rm = TRUE)
+  }, TP)
+  accuracy <- sum(TP)/sum(table_adjusted, na.rm = TRUE)
+  precision <- TP/(TP + FP)
+  recall <- TP/(TP + FN)
+  specificity <- TN/(TN + FP)
+  F0.5 <- 1.25 * (recall * precision/(0.25 * precision + recall))
+  F1 <- 2 * (precision * recall/(precision + recall))
+  F2 <- 5 * (precision * recall/(4 * precision + recall))
+  return(F0.5['Expensive'])
+}
+
+optimal_f05 <- optimize(optimal_value, interval=c(0, 1), maximum=TRUE)
+optimal_f05
