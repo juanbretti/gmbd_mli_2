@@ -18,6 +18,9 @@ data1 <- data %>%
                   ifelse(grepl('^Caserón\\sen', Address), 'Caserón',
                   ifelse(grepl('^Casa\\so\\schalet\\sindependiente\\sen', Address), 'Casa o chalet independiente',
                   ifelse(grepl('^Chalet\\sen', Address), 'Chalet', 'Other')))))))))),
+    Area = gsub('\\s-\\s', '-', Area),
+    Area = gsub('^en\\s', '', Area),
+    Area = gsub('chalet independiente en Nueva España', 'Nueva España', Area),
     Outer = factor(Outer, levels = c(0, 1), labels = c('No', 'Yes')),
     Elevator = factor(Elevator, levels = c(0, 1), labels = c('No', 'Yes')),
     Penthouse = factor(Penthouse, levels = c(0, 1), labels = c('No', 'Yes')),
@@ -25,8 +28,11 @@ data1 <- data %>%
     Duplex = factor(Duplex, levels = c(0, 1), labels = c('No', 'Yes')),
     Semidetached = factor(Semidetached, levels = c(0, 1), labels = c('No', 'Yes'))
   ) %>% 
-  dplyr::select(-Id, -Address, -Number, -Area, -District) %>%
+  mutate_at(vars(Rent, Sq.Mt), log10) %>% 
+  mutate_if(is.numeric, scale) %>%
+  dplyr::select(-Id, -Address, -Number, -Area) %>%
   # dplyr::select(-Id, -Address, -Number, -Area, -District) %>%
+  filter_at(vars(Floor), all_vars(. <= quantile(., 0.9999, na.rm = TRUE))) %>% 
   # filter_at(vars(Area, Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.)))
   filter_at(vars(Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.)))
 skim(data1)
@@ -98,19 +104,30 @@ nominatim_osm <- function(address = NULL)
     ), error = function(c) return(data.frame())
   )
   if(length(d) == 0) return(data.frame())
-  return(data.frame(lon = as.numeric(d$lon), lat = as.numeric(d$lat)))
+  return(data.frame(address = address, lon = as.numeric(d$lon), lat = as.numeric(d$lat)))
 }
 
 data4 <- data %>% 
-  mutate(pos = gsub(".*\\sen\\s","", Address),
-         pos = paste(pos, ifelse(is.na(Number), 1, Number), 'Madrid', 'Spain', sep = ', '))
+  mutate(address_complete = gsub(".*\\sen\\s","", Address),
+         address_complete = paste(address_complete, ifelse(is.na(Number), 1, Number), Area,'Madrid', 'Spain', sep = ', ')) %>% 
+  group_by(address_complete) %>% 
+  summarize(n=n())
 
-# system.time({
-#   data_geopos <- lapply(data4$pos, nominatim_osm) %>% 
-#     bind_rows()
-# })
-# saveRDS(object = data_geopos, file = file.path('storage', 'data_geopos.RData'))
+system.time({
+  data_geopos <- lapply(data4$address_complete[1:4], nominatim_osm) %>%
+    bind_rows()
+})
+saveRDS(object = data_geopos, file = file.path('storage', 'data_geopos.RData'))
 data_geopos <- readRDS(file = file.path('storage', 'data_geopos.RData'))
+
+data4 <- data4 %>% 
+  bind_cols(data_geopos)
+
+
+
+
+
+
 
 ## Case in the PPT ----
 data <- read_excel(path = file.path('data', 'wage.xlsx'), sheet = 1)

@@ -126,7 +126,7 @@ pdata <- as.numeric(pdata>=optimal_f05$maximum)
 pdata <- factor(pdata, levels = c(0, 1), labels = c('Cheap', 'Expensive'))
 
 # Confusion matrix
-caret::confusionMatrix(data = pdata, reference = data2$Rent, positive = 'Cheap')
+caret::confusionMatrix(data = pdata, reference = data2$Rent, positive = 'Cheap', mode = "everything")
 
 ## Optimal using weights
 
