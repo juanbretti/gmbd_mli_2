@@ -93,6 +93,7 @@ regression_table(step.model)
 ## details: http://wiki.openstreetmap.org/wiki/Nominatim
 ## made by: D.Kisler 
 
+# Function to geolocate
 nominatim_osm <- function(address = NULL)
 {
   if(suppressWarnings(is.null(address)))
@@ -107,23 +108,41 @@ nominatim_osm <- function(address = NULL)
   return(data.frame(address = address, lon = as.numeric(d$lon), lat = as.numeric(d$lat)))
 }
 
+# Full address
 data4 <- data %>% 
   mutate(address_complete = gsub(".*\\sen\\s","", Address),
          address_complete = paste(address_complete, ifelse(is.na(Number), 1, Number), Area,'Madrid', 'Spain', sep = ', ')) %>% 
   group_by(address_complete) %>% 
   summarize(n=n())
 
+# Look for the geolocalization
 system.time({
-  data_geopos <- lapply(data4$address_complete[1:4], nominatim_osm) %>%
+  data_geopos_address <- lapply(data4$address_complete[1:5], nominatim_osm) %>%
     bind_rows()
 })
-saveRDS(object = data_geopos, file = file.path('storage', 'data_geopos.RData'))
-data_geopos <- readRDS(file = file.path('storage', 'data_geopos.RData'))
+saveRDS(object = data_geopos_address, file = file.path('storage', 'data_geopos_address.RData'))
+data_geopos_address <- readRDS(file = file.path('storage', 'data_geopos_address.RData'))
 
-data4 <- data4 %>% 
-  bind_cols(data_geopos)
+# Only for the areas of addresses with no data
+data4 <- data %>% 
+  mutate(address_complete = gsub(".*\\sen\\s","", Address),
+         address_complete = paste(address_complete, ifelse(is.na(Number), 1, Number), Area,'Madrid', 'Spain', sep = ', ')) %>% 
+  left_join(data_geopos_address, by = c("address_complete" = "address"))
 
+# Prepare
+data5 <- data4 %>% 
+  filter(is.na(lat)) %>% 
+  group_by(Area) %>% 
+  summarize(n=n()) %>% 
+  mutate(address_complete = paste(Area,'Madrid', 'Spain', sep = ', '))
 
+# Look for the geolocalization
+system.time({
+  data_geopos_area <- lapply(data5$address_complete[1:5], nominatim_osm) %>%
+    bind_rows()
+})
+saveRDS(object = data_geopos_area, file = file.path('storage', 'data_geopos_area.RData'))
+data_geopos_area <- readRDS(file = file.path('storage', 'data_geopos_area.RData'))
 
 
 
