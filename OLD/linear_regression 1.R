@@ -29,13 +29,6 @@ data1 <- data %>%
     Duplex = factor(Duplex, levels = c(0, 1), labels = c('No', 'Yes')), # Dúplex
     Semidetached = factor(Semidetached, levels = c(0, 1), labels = c('No', 'Yes')) #Chalet, Chalet adosado
   )
-  # mutate_at(vars(Rent, Sq.Mt), log10) %>% 
-  # mutate_if(is.numeric, scale)
-  # dplyr::select(-Id, -Address, -Number, -Area) %>%
-  # dplyr::select(-Id, -Address, -Number, -Area, -District) %>%
-  # filter_at(vars(Floor), all_vars(. <= quantile(., 0.9999, na.rm = TRUE))) %>% 
-  # filter_at(vars(Area, Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.)))
-  # filter_at(vars(Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.)))
 skim(data1)
 
 # data1 %>% 
@@ -73,10 +66,10 @@ data2 <- data1 %>%
   summarize(n=n())
 
 # Look for the geolocalization
-system.time({
-  data_geopos_address <- lapply(data2$address_complete, nominatim_osm) %>%
-    bind_rows()
-})
+# system.time({
+#   data_geopos_address <- lapply(data2$address_complete, nominatim_osm) %>%
+#     bind_rows()
+# })
 # saveRDS(object = data_geopos_address, file = file.path('storage', 'data_geopos_address.RData'))
 data_geopos_address <- readRDS(file = file.path('storage', 'data_geopos_address.RData'))
 
@@ -94,10 +87,10 @@ data4 <- data3 %>%
   mutate(area_complete = paste(Area,'Madrid', 'Spain', sep = ', '))
 
 # Look for the geolocalization
-system.time({
-  data_geopos_area <- lapply(data4$area_complete, nominatim_osm) %>%
-    bind_rows()
-})
+# system.time({
+#   data_geopos_area <- lapply(data4$area_complete, nominatim_osm) %>%
+#     bind_rows()
+# })
 # saveRDS(object = data_geopos_area, file = file.path('storage', 'data_geopos_area.RData'))
 data_geopos_area <- readRDS(file = file.path('storage', 'data_geopos_area.RData'))
 
@@ -117,66 +110,80 @@ leaflet(data = data4) %>%
              popup = ~as.character(Id), 
              label = ~as.character(paste(gsub(".*\\sen\\s","", Address), ifelse(is.na(Number), 1, Number), Area,'Madrid', 'Spain', sep = ', ')))
 
+## Select data ----
+
+data5 <- data4 %>% 
+  mutate_at(vars(Rent, Sq.Mt), log10) %>%
+  # mutate_if(is.numeric, scale) %>% 
+  dplyr::select(-Id, -Address, -Number, -Area, -District) %>%
+  dplyr::select(-Penthouse, -Cottage, -Duplex, -Semidetached) %>% 
+  filter_at(vars(Floor), all_vars(. <= quantile(., 0.9999, na.rm = TRUE))) %>%
+  filter_at(vars(Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.)))
+  
+skim(data5)
 ## Model ----
 
 # Fit full model
-# full.model <- glm(Rent ~ ., data = data1)
+# model_full <- glm(Rent ~ ., data = data1)
 # https://stats.stackexchange.com/questions/181113/is-there-any-difference-between-lm-and-glm-for-the-gaussian-family-of-glm
 # full.model1 <- lm(Rent ~ ., data = data1)
-full.model <- glm(Rent ~ ., data = data1, family = gaussian(link = "identity"))
-summary(full.model)
+model_full <- glm(Rent ~ ., data = data5, family = gaussian(link = "identity"))
+summary(model_full)
 
 # Step model
-step.model <- full.model %>% 
+model_step <- model_full %>% 
   stepAIC(trace = FALSE)
-summary(step.model)
+summary(model_step)
 
 ## Good opportunities ----
 # Find good opportunities in the market looking for flats that may be under their theoretical estimated price
 
-data2 <- data1
-data2$prediction <- predict(step.model, data1)
-data2 %>% 
+data6 <- data5
+data6$prediction <- predict(model_step, data5)
+data6 %>% 
   # filter(Rent<prediction) %>%
   arrange(desc(prediction/Rent-1))
 
-# Scaled
-data2 <- data1 %>% 
-  mutate_if(is.numeric, scale)
-step.model_scaled <- glm(formula(step.model), data = data2, family = gaussian(link = "identity"))
-summary(step.model_scaled)
+## Summary ----
 
-## Complete summary ----
-summary_unit <- summary(step.model)$coefficients %>% 
+# Scaled
+data7 <- data5 %>% 
+  mutate_if(is.numeric, scale)
+model_step_scaled <- glm(formula(model_step), data = data7, family = gaussian(link = "identity"))
+summary(model_step_scaled)
+
+# First version of the summary
+summary_unit <- summary(model_step)$coefficients %>% 
   data.frame() %>% 
   rownames_to_column()
-summary_scaled <- summary(step.model_scaled)$coefficients %>% 
+summary_scaled <- summary(model_step_scaled)$coefficients %>% 
   data.frame() %>% 
   rownames_to_column() %>% 
   rename_all(function(x) paste(x, 'scaled', sep = '_'))
 bind_cols(summary_unit,
-          dplyr::select(summary_scaled, all_of(c('Estimate_scaled', 'Std..Error_scaled', 't.value_scaled'))))
+          dplyr::select(summary_scaled, Estimate_scaled, Std..Error_scaled, t.value_scaled))
 
-regression_table <- function(x, level = 0.95) {
+# Second version of the summary
+regression_table <- function(x, x_scaled, level = 0.95) {
   table <- cbind(
     summary(x)$coefficients,
-    summary(step.model_scaled)$coefficients[, 'Estimate'],
+    summary(x_scaled)$coefficients[, 'Estimate'],
     confint.default(x, level = level))
   colnames(table)[5] <- "Estimate Std."
   return(table)
 }
 
-regression_table(step.model)
+regression_table(model_step, model_step_scaled)
 
 ## Case in the PPT ----
 data <- read_excel(path = file.path('data', 'wage.xlsx'), sheet = 1)
 
 # Maintaining units
-full.model <- lm(WAGE ~ AFROAMERICAN + AGE + EDUC + EXPER + HOURS + MARRIED + SIBS + BRTHORD, data = data)
-summary(full.model)
+model_full <- lm(WAGE ~ AFROAMERICAN + AGE + EDUC + EXPER + HOURS + MARRIED + SIBS + BRTHORD, data = data)
+summary(model_full)
 # Scaled
 data2 <- data %>% 
   mutate_if(is.numeric, scale)
-full.model <- lm(WAGE ~ AFROAMERICAN + AGE + EDUC + EXPER + HOURS + MARRIED + SIBS + BRTHORD, data = data2)
-summary(full.model)
-summary(full.model)$coefficients[, 'Estimate']
+model_full <- lm(WAGE ~ AFROAMERICAN + AGE + EDUC + EXPER + HOURS + MARRIED + SIBS + BRTHORD, data = data2)
+summary(model_full)
+summary(model_full)$coefficients[, 'Estimate']
