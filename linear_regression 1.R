@@ -2,6 +2,7 @@ library(tidyverse)
 library(readxl)
 library(skimr)
 library(MASS)
+library(leaflet)
 
 ## Read data ----
 data <- read_excel(path = file.path('data', 'Houses for rent in madrid_assignment 2020.xlsx'), sheet = 'Houses_for_rent_madrid_assignme')
@@ -23,19 +24,98 @@ data1 <- data %>%
     Area = gsub('chalet independiente en Nueva España', 'Nueva España', Area),
     Outer = factor(Outer, levels = c(0, 1), labels = c('No', 'Yes')),
     Elevator = factor(Elevator, levels = c(0, 1), labels = c('No', 'Yes')),
-    Penthouse = factor(Penthouse, levels = c(0, 1), labels = c('No', 'Yes')),
-    Cottage = factor(Cottage, levels = c(0, 1), labels = c('No', 'Yes')),
-    Duplex = factor(Duplex, levels = c(0, 1), labels = c('No', 'Yes')),
-    Semidetached = factor(Semidetached, levels = c(0, 1), labels = c('No', 'Yes'))
-  ) %>% 
-  mutate_at(vars(Rent, Sq.Mt), log10) %>% 
-  mutate_if(is.numeric, scale) %>%
-  dplyr::select(-Id, -Address, -Number, -Area) %>%
+    Penthouse = factor(Penthouse, levels = c(0, 1), labels = c('No', 'Yes')), # Ático
+    Cottage = factor(Cottage, levels = c(0, 1), labels = c('No', 'Yes')), # Casa o chalet independiente, Caserón, Chalet, Chalet adosado, Chalet pareado
+    Duplex = factor(Duplex, levels = c(0, 1), labels = c('No', 'Yes')), # Dúplex
+    Semidetached = factor(Semidetached, levels = c(0, 1), labels = c('No', 'Yes')) #Chalet, Chalet adosado
+  )
+  # mutate_at(vars(Rent, Sq.Mt), log10) %>% 
+  # mutate_if(is.numeric, scale)
+  # dplyr::select(-Id, -Address, -Number, -Area) %>%
   # dplyr::select(-Id, -Address, -Number, -Area, -District) %>%
-  filter_at(vars(Floor), all_vars(. <= quantile(., 0.9999, na.rm = TRUE))) %>% 
+  # filter_at(vars(Floor), all_vars(. <= quantile(., 0.9999, na.rm = TRUE))) %>% 
   # filter_at(vars(Area, Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.)))
-  filter_at(vars(Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.)))
+  # filter_at(vars(Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.)))
 skim(data1)
+
+# data1 %>% 
+#   filter(Semidetached == 'Yes') %>% 
+#   group_by(Type) %>% 
+#   summarise(n=n())
+
+## Geolocalization ----
+
+# https://datascienceplus.com/osm-nominatim-with-r-getting-locations-geo-coordinates-by-its-address/
+## geocoding function using OSM Nominatim API
+## details: http://wiki.openstreetmap.org/wiki/Nominatim
+## made by: D.Kisler 
+
+# Function to geolocate
+nominatim_osm <- function(address = NULL)
+{
+  if(suppressWarnings(is.null(address)))
+    return(data.frame())
+  tryCatch(
+    d <- jsonlite::fromJSON( 
+      gsub('\\@addr\\@', gsub('\\s+', '\\%20', address), 
+           'http://nominatim.openstreetmap.org/search/@addr@?format=json&addressdetails=0&limit=1')
+    ), error = function(c) return(data.frame())
+  )
+  if(length(d) == 0) return(data.frame())
+  return(data.frame(address = address, lon = as.numeric(d$lon), lat = as.numeric(d$lat)))
+}
+
+# Full address
+data2 <- data1 %>% 
+  mutate(address_complete = gsub(".*\\sen\\s","", Address),
+         address_complete = paste(address_complete, ifelse(is.na(Number), 1, Number), Area,'Madrid', 'Spain', sep = ', ')) %>% 
+  group_by(address_complete) %>% 
+  summarize(n=n())
+
+# Look for the geolocalization
+system.time({
+  data_geopos_address <- lapply(data2$address_complete, nominatim_osm) %>%
+    bind_rows()
+})
+# saveRDS(object = data_geopos_address, file = file.path('storage', 'data_geopos_address.RData'))
+data_geopos_address <- readRDS(file = file.path('storage', 'data_geopos_address.RData'))
+
+# Only for the areas of addresses with no data
+data3 <- data1 %>% 
+  mutate(address_complete = gsub(".*\\sen\\s","", Address),
+         address_complete = paste(address_complete, ifelse(is.na(Number), 1, Number), Area,'Madrid', 'Spain', sep = ', ')) %>% 
+  left_join(data_geopos_address, by = c("address_complete" = "address"))
+
+# Prepare
+data4 <- data3 %>% 
+  filter(is.na(lat)) %>% 
+  group_by(Area) %>% 
+  summarize(n=n()) %>% 
+  mutate(area_complete = paste(Area,'Madrid', 'Spain', sep = ', '))
+
+# Look for the geolocalization
+system.time({
+  data_geopos_area <- lapply(data4$area_complete, nominatim_osm) %>%
+    bind_rows()
+})
+# saveRDS(object = data_geopos_area, file = file.path('storage', 'data_geopos_area.RData'))
+data_geopos_area <- readRDS(file = file.path('storage', 'data_geopos_area.RData'))
+
+data4 <- data3 %>% 
+  mutate(area_complete = paste(Area,'Madrid', 'Spain', sep = ', ')) %>% 
+  left_join(data_geopos_area, by = c("area_complete" = "address")) %>% 
+  mutate(Longitude = ifelse(is.na(lon.x), lon.y, lon.x),
+         Latitude = ifelse(is.na(lat.x), lat.y, lat.x)) %>% 
+  dplyr::select(-any_of(c('lon.x', 'lat.x', 'lon.y', 'lat.y', 'address_complete', 'area_complete')))
+
+skim(data4)
+
+## Map ----
+leaflet(data = data4) %>%
+  addTiles() %>%
+  addMarkers(~Longitude, ~Latitude, 
+             popup = ~as.character(Id), 
+             label = ~as.character(paste(gsub(".*\\sen\\s","", Address), ifelse(is.na(Number), 1, Number), Area,'Madrid', 'Spain', sep = ', ')))
 
 ## Model ----
 
@@ -51,7 +131,9 @@ step.model <- full.model %>%
   stepAIC(trace = FALSE)
 summary(step.model)
 
-## Find good opportunities in the market looking for flats that may be under their theoretical estimated price ----
+## Good opportunities ----
+# Find good opportunities in the market looking for flats that may be under their theoretical estimated price
+
 data2 <- data1
 data2$prediction <- predict(step.model, data1)
 data2 %>% 
@@ -85,68 +167,6 @@ regression_table <- function(x, level = 0.95) {
 }
 
 regression_table(step.model)
-
-## Geolocalization ----
-
-# https://datascienceplus.com/osm-nominatim-with-r-getting-locations-geo-coordinates-by-its-address/
-## geocoding function using OSM Nominatim API
-## details: http://wiki.openstreetmap.org/wiki/Nominatim
-## made by: D.Kisler 
-
-# Function to geolocate
-nominatim_osm <- function(address = NULL)
-{
-  if(suppressWarnings(is.null(address)))
-    return(data.frame())
-  tryCatch(
-    d <- jsonlite::fromJSON( 
-      gsub('\\@addr\\@', gsub('\\s+', '\\%20', address), 
-           'http://nominatim.openstreetmap.org/search/@addr@?format=json&addressdetails=0&limit=1')
-    ), error = function(c) return(data.frame())
-  )
-  if(length(d) == 0) return(data.frame())
-  return(data.frame(address = address, lon = as.numeric(d$lon), lat = as.numeric(d$lat)))
-}
-
-# Full address
-data4 <- data %>% 
-  mutate(address_complete = gsub(".*\\sen\\s","", Address),
-         address_complete = paste(address_complete, ifelse(is.na(Number), 1, Number), Area,'Madrid', 'Spain', sep = ', ')) %>% 
-  group_by(address_complete) %>% 
-  summarize(n=n())
-
-# Look for the geolocalization
-system.time({
-  data_geopos_address <- lapply(data4$address_complete[1:5], nominatim_osm) %>%
-    bind_rows()
-})
-saveRDS(object = data_geopos_address, file = file.path('storage', 'data_geopos_address.RData'))
-data_geopos_address <- readRDS(file = file.path('storage', 'data_geopos_address.RData'))
-
-# Only for the areas of addresses with no data
-data4 <- data %>% 
-  mutate(address_complete = gsub(".*\\sen\\s","", Address),
-         address_complete = paste(address_complete, ifelse(is.na(Number), 1, Number), Area,'Madrid', 'Spain', sep = ', ')) %>% 
-  left_join(data_geopos_address, by = c("address_complete" = "address"))
-
-# Prepare
-data5 <- data4 %>% 
-  filter(is.na(lat)) %>% 
-  group_by(Area) %>% 
-  summarize(n=n()) %>% 
-  mutate(address_complete = paste(Area,'Madrid', 'Spain', sep = ', '))
-
-# Look for the geolocalization
-system.time({
-  data_geopos_area <- lapply(data5$address_complete[1:5], nominatim_osm) %>%
-    bind_rows()
-})
-saveRDS(object = data_geopos_area, file = file.path('storage', 'data_geopos_area.RData'))
-data_geopos_area <- readRDS(file = file.path('storage', 'data_geopos_area.RData'))
-
-
-
-
 
 ## Case in the PPT ----
 data <- read_excel(path = file.path('data', 'wage.xlsx'), sheet = 1)
