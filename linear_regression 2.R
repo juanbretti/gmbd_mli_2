@@ -82,51 +82,48 @@ nominatim_osm <- function(address = NULL)
 
 # Full address
 data2 <- data1 %>% 
-  mutate(address_complete = gsub(".*\\sen\\s","", Address),
-         address_complete = paste(address_complete, ifelse(is.na(Number), 1, Number), Area,'Madrid', 'Spain', sep = ', ')) %>% 
-  group_by(address_complete) %>% 
+  mutate(AddressComplete = gsub(".*\\sen\\s","", Address),
+         AddressComplete = paste(AddressComplete, ifelse(is.na(Number), 1, Number), Area, 'Madrid', 'Spain', sep = ', '),
+         AreaComplete = paste(Area, 'Madrid', 'Spain', sep = ', '))
+
+# Group full address
+data3 <- data2 %>% 
+  group_by(AddressComplete) %>% 
   summarize(n=n())
 
 # Look for the geolocalization
 # system.time({
-#   data_geopos_address <- lapply(data2$address_complete, nominatim_osm) %>%
+#   data_geopos_address <- lapply(data3$AddressComplete, nominatim_osm) %>%
 #     bind_rows()
 # })
 # saveRDS(object = data_geopos_address, file = file.path('storage', 'data_geopos_address.RData'))
 data_geopos_address <- readRDS(file = file.path('storage', 'data_geopos_address.RData'))
 
-# Only for the areas of addresses with no data
-data3 <- data1 %>% 
-  mutate(address_complete = gsub(".*\\sen\\s","", Address),
-         address_complete = paste(address_complete, ifelse(is.na(Number), 1, Number), Area,'Madrid', 'Spain', sep = ', ')) %>% 
-  left_join(data_geopos_address, by = c("address_complete" = "address"))
-
-# Prepare
-data4 <- data3 %>% 
-  filter(is.na(lat)) %>% 
-  group_by(Area) %>% 
-  summarize(n=n()) %>% 
-  mutate(area_complete = paste(Area,'Madrid', 'Spain', sep = ', '))
+# Group area
+data3 <- data2 %>% 
+  filter(!AddressComplete %in% data_geopos_address$address) %>% 
+  group_by(AreaComplete) %>% 
+  summarize(n=n())
 
 # Look for the geolocalization
 # system.time({
-#   data_geopos_area <- lapply(data4$area_complete, nominatim_osm) %>%
+#   data_geopos_area <- lapply(data3$AreaComplete, nominatim_osm) %>%
 #     bind_rows()
 # })
 # saveRDS(object = data_geopos_area, file = file.path('storage', 'data_geopos_area.RData'))
 data_geopos_area <- readRDS(file = file.path('storage', 'data_geopos_area.RData'))
 
-data4 <- data3 %>% 
-  mutate(area_complete = paste(Area,'Madrid', 'Spain', sep = ', ')) %>% 
-  left_join(data_geopos_area, by = c("area_complete" = "address")) %>% 
+data3 <- data2 %>% 
+  left_join(data_geopos_address, by = c("AddressComplete" = "address")) %>% 
+  left_join(data_geopos_area, by = c("AreaComplete" = "address")) %>% 
   mutate(Longitude = ifelse(is.na(lon.x), lon.y, lon.x),
          Latitude = ifelse(is.na(lat.x), lat.y, lat.x)) %>% 
-  dplyr::select(-any_of(c('lon.x', 'lat.x', 'lon.y', 'lat.y', 'address_complete', 'area_complete')))
+  dplyr::select(-any_of(c('lon.x', 'lat.x', 'lon.y', 'lat.y', 'AddressComplete', 'AreaComplete')))
 
-skim(data4)
+skim(data3)
 
 ## Map ----
-leaflet(data = data4) %>%
+leaflet(data = data3) %>%
   addTiles() %>%
   addMarkers(~Longitude, ~Latitude, 
              popup = ~as.character(Id), 
@@ -134,38 +131,32 @@ leaflet(data = data4) %>%
 
 ## Select data ----
 
-data5 <- data4 %>% 
-  mutate_at(vars(Rent, Sq.Mt), log10) %>%
-  rename_at(vars(Rent, Sq.Mt), function(x) paste('Log10(', x, ')', sep = '')) %>% 
+data4 <- data3 %>% 
+  # mutate_at(vars(Rent, Sq.Mt), log10) %>%
+  # rename_at(vars(Rent, Sq.Mt), function(x) paste('Log10(', x, ')', sep = '')) %>% 
   # mutate_if(is.numeric, scale) %>% 
   dplyr::select(-Id, -Address, -Number, -Area, -District) %>% # Replaced by lat and lon.
   dplyr::select(-Penthouse, -Cottage, -Duplex, -Semidetached) %>% # 'Type' is more comprehensive
   filter_at(vars(Outer, Elevator, Bedrooms, Floor, Latitude, Longitude), all_vars(!is.na(.))) # Remove nulls
 
-skim(data5)
+skim(data4)
 
 ## Correlation ----
 
 # C:\Users\juanb\OneDrive\GMBD\2020-01-10 - TERM 1\STATISTICAL PROGRAMMING - R (MBD-EN-BL2020J-1_32R369_316435)\Group assignment\GitHub\gmbd_r\!Delivery\EDA-1.R
-skim(data5)
 
-data5 %>% 
+data4 %>% 
   # dplyr::select(Bedrooms, Sq.Mt, Floor, Longitude, Latitude) %>% 
   dplyr::select_if(is.numeric) %>% 
   chart.Correlation(histogram=TRUE)
 
-data8 <- data5 %>% 
-  # dplyr::select(Bedrooms, Sq.Mt, Floor, Longitude, Latitude) %>% 
-  dplyr::select_if(is.numeric)
-charts.PerformanceSummary(dplyr::select(data8, -`Log10(Rent)`), data8$`Log10(Rent)`)
-
 ## Frequency tables ----
 # https://dabblingwithdata.wordpress.com/2017/12/20/my-favourite-r-package-for-frequency-tables/
 
-CrossTable(data5$Type, data5$Elevator, expected = FALSE, prop.t = FALSE, prop.chisq	= FALSE)
-CrossTable(data5$Type, data5$Outer, expected = FALSE, prop.t = FALSE, prop.chisq	= FALSE)
-CrossTable(data5$Type, data5$Bedrooms, expected = FALSE, prop.t = FALSE, prop.chisq	= FALSE)
-CrossTable(data5$Type, data5$Floor, expected = FALSE, prop.t = FALSE, prop.chisq	= FALSE)
+CrossTable(data4$Type, data4$Elevator, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
+CrossTable(data4$Type, data4$Outer, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
+CrossTable(data4$Type, data4$Bedrooms, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
+CrossTable(data4$Type, data4$Floor, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
 
 ## Sankey ----
 
@@ -185,13 +176,13 @@ data1 %>%
 
 ## Densities ----
 
-# data5 %>% 
+# data4 %>% 
 #   ggplot(aes(x = Sq.Mt, color = Type)) +
 #   # geom_histogram(aes(y=..density..)) +
 #   geom_density(alpha=.2) +
 #   labs(x = 'Log10(Sq.Mt)', y = 'Density')
 # 
-# data5 %>%
+# data4 %>%
 #   ggplot(aes(x = Bedrooms, color = Type)) +
 #   # geom_histogram(aes(y=..density..)) +
 #   geom_density(alpha=.2) +
@@ -201,36 +192,118 @@ library(ggridges)
 # http://www.sthda.com/english/articles/32-r-graphics-essentials/133-plot-one-variable-frequency-graph-density-distribution-and-more/
 theme_set(theme_ridges())
 
-data5 %>% 
-  ggplot(aes(x = `Log10(Sq.Mt)`, y = Type)) +
+data4 %>% 
+  ggplot(aes(x = Sq.Mt, y = Type)) +
   # geom_histogram(aes(y=..density..)) +
   geom_density_ridges(aes(fill = Type), alpha=.2) +
-  labs(x = 'Log10(Sq.Mt)', y = 'Density') +
+  labs(x = 'Sq.Mt', y = 'Density') +
   theme(legend.position = "none")
 
-data5 %>%
+data4 %>%
   ggplot(aes(x = Bedrooms, y = Type)) +
   # geom_histogram(aes(y=..density..)) +
   geom_density_ridges(aes(fill = Type), alpha=.2) +
   labs(x = 'Bedrooms', y = 'Density') +
   theme(legend.position = "none")
 
-data5 %>%
+data4 %>%
   ggplot(aes(x = Floor, y = Type)) +
   # geom_histogram(aes(y=..density..)) +
   geom_density_ridges(aes(fill = Type), alpha=.2) +
   labs(x = 'Floor', y = 'Density') +
   theme(legend.position = "none")
 
-data5 %>%
-  ggplot(aes(x = `Log10(Sq.Mt)`)) +
+data4 %>%
+  ggplot(aes(x = Sq.Mt)) +
   stat_ecdf(aes(color = Type, linetype = Type), geom = "step", size = 1) +
-  labs(y = "f(Log10(Sq.Mt))")
+  labs(y = "f(Sq.Mt)")
 
-data5 %>%
+data4 %>%
   ggplot(aes(x = Bedrooms)) +
   stat_ecdf(aes(color = Type, linetype = Type), geom = "step", size = 1) +
   labs(y = "f(Bedrooms)")
+
+## Impact of removing one feature at a time ----
+
+bind_cols(
+  FeatureRemoved = c('None', colnames(data4)[2:length(colnames(data4))]),
+bind_rows(
+  coef(glm(Rent ~ ., data = data4, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Bedrooms, data = data4, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Sq.Mt, data = data4, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Floor, data = data4, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Outer, data = data4, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Elevator, data = data4, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Type, data = data4, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Longitude, data = data4, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Latitude, data = data4, family = gaussian(link = "identity"))))
+)
+
+## Summary per factor ----
+data4 %>% 
+  group_by(Outer) %>% 
+  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
+            p0.25 = quantile(Rent, probs = 0.25), 
+            p0.50 = quantile(Rent, probs = 0.50), 
+            p0.75 = quantile(Rent, probs = 0.75),
+            .groups = 'drop')
+
+data4 %>% 
+  group_by(Elevator) %>% 
+  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
+            p0.25 = quantile(Rent, probs = 0.25), 
+            p0.50 = quantile(Rent, probs = 0.50), 
+            p0.75 = quantile(Rent, probs = 0.75),
+            .groups = 'drop')
+
+data4 %>% 
+  group_by(Type) %>% 
+  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
+            p0.25 = quantile(Rent, probs = 0.25), 
+            p0.50 = quantile(Rent, probs = 0.50), 
+            p0.75 = quantile(Rent, probs = 0.75),
+            .groups = 'drop')
+
+data4 %>% 
+  group_by(Bedrooms) %>% 
+  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
+            p0.25 = quantile(Rent, probs = 0.25), 
+            p0.50 = quantile(Rent, probs = 0.50), 
+            p0.75 = quantile(Rent, probs = 0.75),
+            .groups = 'drop')
+
+data4 %>% 
+  group_by(Floor) %>% 
+  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
+            p0.25 = quantile(Rent, probs = 0.25), 
+            p0.50 = quantile(Rent, probs = 0.50), 
+            p0.75 = quantile(Rent, probs = 0.75),
+            .groups = 'drop')
+
+data4 %>% 
+  mutate(Sq.MtRanges = cut(data4$Sq.Mt, breaks = 6)) %>% 
+  group_by(Sq.MtRanges) %>% 
+  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(), 
+            p0.25 = quantile(Rent, probs = 0.25), 
+            p0.50 = quantile(Rent, probs = 0.50), 
+            p0.75 = quantile(Rent, probs = 0.75),
+            .groups = 'drop')
+
+data4 %>% 
+  mutate(Sq.MtRanges = cut(data4$Sq.Mt, breaks = 6)) %>% 
+  ggplot(aes(x = Rent/Sq.Mt, y = Sq.MtRanges)) +
+  # geom_histogram(aes(y=..density..)) +
+  geom_density_ridges(aes(fill = Sq.MtRanges), alpha=.2) +
+  labs(x = 'Rent/Sq.Mt', y = 'Sq.Mt range') +
+  theme(legend.position = "none")
+
+data4 %>% 
+  mutate(Sq.MtRanges = cut(data4$Sq.Mt, breaks = 6)) %>% 
+  ggplot(aes(x = Rent, y = Sq.MtRanges)) +
+  # geom_histogram(aes(y=..density..)) +
+  geom_density_ridges(aes(fill = Sq.MtRanges), alpha=.2) +
+  labs(x = 'Rent', y = 'Sq.Mt range') +
+  theme(legend.position = "none")
 
 ## Regression model ----
 
@@ -238,27 +311,27 @@ data5 %>%
 # model_full <- glm(Rent ~ ., data = data1)
 # https://stats.stackexchange.com/questions/181113/is-there-any-difference-between-lm-and-glm-for-the-gaussian-family-of-glm
 # full.model1 <- lm(Rent ~ ., data = data1)
-model_full <- glm(`Log10(Rent)` ~ ., data = data5, family = gaussian(link = "identity"))
+model_full <- glm(Rent ~ ., data = data4, family = gaussian(link = "identity"))
 summary(model_full)
 
 # Step model
 model_step <- model_full %>% 
-  stepAIC(trace = FALSE)
+  stepAIC(trace = TRUE)
 summary(model_step)
 
 ## Good opportunities ----
 # Find good opportunities in the market looking for flats that may be under their theoretical estimated price
 
-data6 <- data5
-data6$prediction <- predict(model_step, data5)
+data6 <- data4
+data6$prediction <- predict(model_step, data6)
 data6 %>% 
   # filter(Rent<prediction) %>%
-  arrange(desc(prediction/`Log10(Rent)`-1))
+  arrange(desc(prediction/Rent-1))
 
 ## Model summary table ----
 
 # Scaled
-data7 <- data5 %>% 
+data7 <- data4 %>% 
   mutate_if(is.numeric, scale)
 model_step_scaled <- glm(formula(model_step), data = data7, family = gaussian(link = "identity"))
 summary(model_step_scaled)
