@@ -3,6 +3,7 @@ library(readxl)
 library(skimr)
 library(MASS)
 library(leaflet)
+library(PerformanceAnalytics)
 
 ## Read data ----
 data <- read_excel(path = file.path('data', 'Houses for rent in madrid_assignment 2020.xlsx'), sheet = 'Houses_for_rent_madrid_assignme')
@@ -16,14 +17,29 @@ data1 <- data %>%
                   ifelse(grepl('^Estudio\\sen', Address), 'Estudio',
                   ifelse(grepl('^Chalet\\spareado\\sen', Address), 'Chalet pareado',
                   ifelse(grepl('^Chalet\\sadosado\\sen', Address), 'Chalet adosado',
-                  ifelse(grepl('^Caserón\\sen', Address), 'Caserón',
-                  ifelse(grepl('^Casa\\so\\schalet\\sindependiente\\sen', Address), 'Casa o chalet independiente',
+                  ifelse(grepl('^Caserón\\sen', Address), 'Chalet',
+                  ifelse(grepl('^Casa\\so\\schalet\\sindependiente\\sen', Address), 'Chalet',
                   ifelse(grepl('^Chalet\\sen', Address), 'Chalet', 'Other')))))))))),
+    # Fix Area
     Area = gsub('\\s-\\s', '-', Area),
     Area = gsub('^en\\s', '', Area),
     Area = gsub('chalet independiente en Nueva España', 'Nueva España', Area),
+    # Chalet
+    Floor = ifelse(is.na(Floor) & Type == 'Chalet', 0, Floor),
+    Outer = ifelse(is.na(Outer) & Type == 'Chalet', 0, Outer),
+    Elevator = ifelse(is.na(Elevator) & Type == 'Chalet', 0, Elevator),
+    # Estudio
+    Bedrooms = ifelse(is.na(Bedrooms) & Type == 'Estudio', 0, Bedrooms),
+    # Chalet pareado
+    Floor = ifelse(is.na(Floor) & Type == 'Chalet pareado', 0, Floor),
+    Outer = ifelse(is.na(Outer) & Type == 'Chalet pareado', 0, Outer),
+    # Chalet adosado
+    Floor = ifelse(Type == 'Chalet adosado', 0, Floor), # Data error
+    Outer = ifelse(is.na(Outer) & Type == 'Chalet adosado', 0, Outer),
+    # Factoring
     Outer = factor(Outer, levels = c(0, 1), labels = c('No', 'Yes')),
     Elevator = factor(Elevator, levels = c(0, 1), labels = c('No', 'Yes')),
+    # Type, but will be removed
     Penthouse = factor(Penthouse, levels = c(0, 1), labels = c('No', 'Yes')), # Ático
     Cottage = factor(Cottage, levels = c(0, 1), labels = c('No', 'Yes')), # Casa o chalet independiente, Caserón, Chalet, Chalet adosado, Chalet pareado
     Duplex = factor(Duplex, levels = c(0, 1), labels = c('No', 'Yes')), # Dúplex
@@ -32,8 +48,13 @@ data1 <- data %>%
 skim(data1)
 
 # data1 %>% 
-#   filter(Semidetached == 'Yes') %>% 
-#   group_by(Type) %>% 
+#   filter(Type == 'Chalet adosado') %>% 
+#   dplyr::select(-Id, -District, -Address, -Number, -Area, -Type) %>% 
+#   skim(.)
+
+# data1 %>%
+#   filter(is.na(Floor)) %>%
+#   group_by(Type) %>%
 #   summarise(n=n())
 
 ## Geolocalization ----
@@ -114,20 +135,125 @@ leaflet(data = data4) %>%
 
 data5 <- data4 %>% 
   mutate_at(vars(Rent, Sq.Mt), log10) %>%
+  rename_at(vars(Rent, Sq.Mt), function(x) paste('Log10(', x, ')', sep = '')) %>% 
   # mutate_if(is.numeric, scale) %>% 
   dplyr::select(-Id, -Address, -Number, -Area, -District) %>% # Replaced by lat and lon.
-  dplyr::select(-Penthouse, -Cottage, -Duplex, -Semidetached) %>% # Type is more comprehensive
-  filter_at(vars(Floor), all_vars(. <= quantile(., 0.9999, na.rm = TRUE))) %>% # Extreme value of 43039
-  filter_at(vars(Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.))) # Remove nulls
-  
+  dplyr::select(-Penthouse, -Cottage, -Duplex, -Semidetached) %>% # 'Type' is more comprehensive
+  filter_at(vars(Outer, Elevator, Bedrooms, Floor, Latitude, Longitude), all_vars(!is.na(.))) # Remove nulls
+
 skim(data5)
+
+## Correlation ----
+
+# C:\Users\juanb\OneDrive\GMBD\2020-01-10 - TERM 1\STATISTICAL PROGRAMMING - R (MBD-EN-BL2020J-1_32R369_316435)\Group assignment\GitHub\gmbd_r\!Delivery\EDA-1.R
+skim(data5)
+
+data5 %>% 
+  # dplyr::select(Bedrooms, Sq.Mt, Floor, Longitude, Latitude) %>% 
+  dplyr::select_if(is.numeric) %>% 
+  chart.Correlation(histogram=TRUE)
+
+data8 <- data5 %>% 
+  # dplyr::select(Bedrooms, Sq.Mt, Floor, Longitude, Latitude) %>% 
+  dplyr::select_if(is.numeric)
+charts.PerformanceSummary(dplyr::select(data8, -`Log10(Rent)`), data8$`Log10(Rent)`)
+
+data5 %>% 
+  group_by(Type) %>% 
+  group_by(Elevator) %>% 
+  summarise(n=n())
+
+data5 %>% 
+  dplyr::select(Type, Elevator) %>% 
+  table(.)
+
+data5 %>% 
+  dplyr::select(Type, Outer) %>% 
+  table(.)
+
+data5 %>% 
+  dplyr::select(Type, Bedrooms) %>% 
+  table(.)
+
+data5 %>% 
+  dplyr::select(Type, Floor) %>% 
+  table(.)
+
+data(managers)
+charts.PerformanceSummary(managers[,1:6],managers[,7:8])
+
+## Distribution per type ----
+
+## Sankey ----
+
+# https://www.displayr.com/how-to-create-sankey-diagrams-from-tables-using-r/?utm_medium=Feed&utm_source=Syndication
+# install.packages("devtools")
+# library(devtools)
+# install_github("Displayr/flipPlots")
+library(flipPlots)
+
+data_san <- data5 %>% 
+  dplyr::select(Type, Outer, Elevator, Bedrooms, Floor)
+
+SankeyDiagram(data_san,
+              link.color = "Source") 
+
+## Densities ----
+
+# data5 %>% 
+#   ggplot(aes(x = Sq.Mt, color = Type)) +
+#   # geom_histogram(aes(y=..density..)) +
+#   geom_density(alpha=.2) +
+#   labs(x = 'Log10(Sq.Mt)', y = 'Density')
+# 
+# data5 %>%
+#   ggplot(aes(x = Bedrooms, color = Type)) +
+#   # geom_histogram(aes(y=..density..)) +
+#   geom_density(alpha=.2) +
+#   labs(x = 'Bedrooms', y = 'Density')
+
+library(ggridges)
+# http://www.sthda.com/english/articles/32-r-graphics-essentials/133-plot-one-variable-frequency-graph-density-distribution-and-more/
+theme_set(theme_ridges())
+
+data5 %>% 
+  ggplot(aes(x = `Log10(Sq.Mt)`, y = Type)) +
+  # geom_histogram(aes(y=..density..)) +
+  geom_density_ridges(aes(fill = Type), alpha=.2) +
+  labs(x = 'Log10(Sq.Mt)', y = 'Density') +
+  theme(legend.position = "none")
+
+data5 %>%
+  ggplot(aes(x = Bedrooms, y = Type)) +
+  # geom_histogram(aes(y=..density..)) +
+  geom_density_ridges(aes(fill = Type), alpha=.2) +
+  labs(x = 'Bedrooms', y = 'Density') +
+  theme(legend.position = "none")
+
+data5 %>%
+  ggplot(aes(x = Floor, y = Type)) +
+  # geom_histogram(aes(y=..density..)) +
+  geom_density_ridges(aes(fill = Type), alpha=.2) +
+  labs(x = 'Floor', y = 'Density') +
+  theme(legend.position = "none")
+
+data5 %>%
+  ggplot(aes(x = `Log10(Sq.Mt)`)) +
+  stat_ecdf(aes(color = Type, linetype = Type), geom = "step", size = 1) +
+  labs(y = "f(Log10(Sq.Mt))")
+
+data5 %>%
+  ggplot(aes(x = Bedrooms)) +
+  stat_ecdf(aes(color = Type, linetype = Type), geom = "step", size = 1) +
+  labs(y = "f(Bedrooms)")
+
 ## Regression model ----
 
 # Fit full model
 # model_full <- glm(Rent ~ ., data = data1)
 # https://stats.stackexchange.com/questions/181113/is-there-any-difference-between-lm-and-glm-for-the-gaussian-family-of-glm
 # full.model1 <- lm(Rent ~ ., data = data1)
-model_full <- glm(Rent ~ ., data = data5, family = gaussian(link = "identity"))
+model_full <- glm(`Log10(Rent)` ~ ., data = data5, family = gaussian(link = "identity"))
 summary(model_full)
 
 # Step model
@@ -142,9 +268,9 @@ data6 <- data5
 data6$prediction <- predict(model_step, data5)
 data6 %>% 
   # filter(Rent<prediction) %>%
-  arrange(desc(prediction/Rent-1))
+  arrange(desc(prediction/`Log10(Rent)`-1))
 
-## Summary ----
+## Model summary table ----
 
 # Scaled
 data7 <- data5 %>% 
@@ -174,29 +300,3 @@ regression_table <- function(x, x_scaled, level = 0.95) {
 }
 
 regression_table(model_step, model_step_scaled)
-
-## Correlation ----
-
-# C:\Users\juanb\OneDrive\GMBD\2020-01-10 - TERM 1\STATISTICAL PROGRAMMING - R (MBD-EN-BL2020J-1_32R369_316435)\Group assignment\GitHub\gmbd_r\!Delivery\EDA-1.R
-library(PerformanceAnalytics)
-
-skim(data5)
-
-data5 %>% 
-  # dplyr::select(Bedrooms, Sq.Mt, Floor, Longitude, Latitude) %>% 
-  dplyr::select_if(is.numeric) %>% 
-  chart.Correlation(histogram=TRUE)
-
-## Distribution per type ----
-
-data5 %>% 
-  ggplot(aes(x = Sq.Mt, color = Type)) +
-  # geom_histogram(aes(y=..density..)) +
-  geom_density(alpha=.2) +
-  labs(x = 'Log10(Sq.Mt)', y = 'Density')
-
-data5 %>% 
-  ggplot(aes(x = Bedrooms, color = Type)) +
-  # geom_histogram(aes(y=..density..)) +
-  geom_density(alpha=.2) +
-  labs(x = 'Bedrooms', y = 'Density')
