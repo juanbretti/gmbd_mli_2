@@ -4,6 +4,7 @@ library(skimr)
 library(MASS)
 library(leaflet)
 library(PerformanceAnalytics)
+library(gmodels)
 
 ## Read data ----
 data <- read_excel(path = file.path('data', 'Houses for rent in madrid_assignment 2020.xlsx'), sheet = 'Houses_for_rent_madrid_assignme')
@@ -158,45 +159,29 @@ data8 <- data5 %>%
   dplyr::select_if(is.numeric)
 charts.PerformanceSummary(dplyr::select(data8, -`Log10(Rent)`), data8$`Log10(Rent)`)
 
-data5 %>% 
-  group_by(Type) %>% 
-  group_by(Elevator) %>% 
-  summarise(n=n())
+## Frequency tables ----
+# https://dabblingwithdata.wordpress.com/2017/12/20/my-favourite-r-package-for-frequency-tables/
 
-data5 %>% 
-  dplyr::select(Type, Elevator) %>% 
-  table(.)
-
-data5 %>% 
-  dplyr::select(Type, Outer) %>% 
-  table(.)
-
-data5 %>% 
-  dplyr::select(Type, Bedrooms) %>% 
-  table(.)
-
-data5 %>% 
-  dplyr::select(Type, Floor) %>% 
-  table(.)
-
-data(managers)
-charts.PerformanceSummary(managers[,1:6],managers[,7:8])
-
-## Distribution per type ----
+CrossTable(data5$Type, data5$Elevator, expected = FALSE, prop.t = FALSE, prop.chisq	= FALSE)
+CrossTable(data5$Type, data5$Outer, expected = FALSE, prop.t = FALSE, prop.chisq	= FALSE)
+CrossTable(data5$Type, data5$Bedrooms, expected = FALSE, prop.t = FALSE, prop.chisq	= FALSE)
+CrossTable(data5$Type, data5$Floor, expected = FALSE, prop.t = FALSE, prop.chisq	= FALSE)
 
 ## Sankey ----
 
-# https://www.displayr.com/how-to-create-sankey-diagrams-from-tables-using-r/?utm_medium=Feed&utm_source=Syndication
+# https://www.displayr.com/how-to-create-sankey-diagrams-from-tables-using-r/
 # install.packages("devtools")
 # library(devtools)
 # install_github("Displayr/flipPlots")
 library(flipPlots)
 
-data_san <- data5 %>% 
-  dplyr::select(Type, Outer, Elevator, Bedrooms, Floor)
+data1 %>% 
+  dplyr::select(Type, Outer, Elevator, Bedrooms, Floor) %>% 
+  SankeyDiagram(link.color = "Source") 
 
-SankeyDiagram(data_san,
-              link.color = "Source") 
+data1 %>% 
+  dplyr::select(District, Type) %>% 
+  SankeyDiagram(link.color = "Target", max.categories = 300) 
 
 ## Densities ----
 
