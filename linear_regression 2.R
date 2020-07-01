@@ -240,45 +240,22 @@ bind_rows(
 )
 
 ## Summary per factor ----
-data4 %>% 
-  group_by(Outer) %>% 
-  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
-            p0.25 = quantile(Rent, probs = 0.25), 
-            p0.50 = quantile(Rent, probs = 0.50), 
-            p0.75 = quantile(Rent, probs = 0.75),
-            .groups = 'drop')
 
-data4 %>% 
-  group_by(Elevator) %>% 
-  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
-            p0.25 = quantile(Rent, probs = 0.25), 
-            p0.50 = quantile(Rent, probs = 0.50), 
-            p0.75 = quantile(Rent, probs = 0.75),
-            .groups = 'drop')
+summary_factor <- function(factor_){
+  data4 %>% 
+    group_by(!!as.name(factor_)) %>% 
+    summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
+              p0.25 = quantile(Rent, probs = 0.25), 
+              p0.50 = quantile(Rent, probs = 0.50), 
+              p0.75 = quantile(Rent, probs = 0.75),
+              .groups = 'drop')
+}
 
-data4 %>% 
-  group_by(Type) %>% 
-  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
-            p0.25 = quantile(Rent, probs = 0.25), 
-            p0.50 = quantile(Rent, probs = 0.50), 
-            p0.75 = quantile(Rent, probs = 0.75),
-            .groups = 'drop')
-
-data4 %>% 
-  group_by(Bedrooms) %>% 
-  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
-            p0.25 = quantile(Rent, probs = 0.25), 
-            p0.50 = quantile(Rent, probs = 0.50), 
-            p0.75 = quantile(Rent, probs = 0.75),
-            .groups = 'drop')
-
-data4 %>% 
-  group_by(Floor) %>% 
-  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
-            p0.25 = quantile(Rent, probs = 0.25), 
-            p0.50 = quantile(Rent, probs = 0.50), 
-            p0.75 = quantile(Rent, probs = 0.75),
-            .groups = 'drop')
+summary_factor('Outer')
+summary_factor('Elevator')
+summary_factor('Type')
+summary_factor('Bedrooms')
+summary_factor('Floor')
 
 data4 %>% 
   mutate(Sq.MtRanges = cut(data4$Sq.Mt, breaks = 6)) %>% 
