@@ -5,6 +5,7 @@ library(MASS)
 library(leaflet)
 library(PerformanceAnalytics)
 library(gmodels)
+library(htmltools)
 
 ## Read data ----
 data <- read_excel(path = file.path('data', 'Houses for rent in madrid_assignment 2020.xlsx'), sheet = 'Houses_for_rent_madrid_assignme')
@@ -81,71 +82,64 @@ nominatim_osm <- function(address = NULL)
 }
 
 # Full address
-data2 <- data1 %>% 
+data2_temp <- data1 %>% 
   mutate(AddressComplete = gsub(".*\\sen\\s","", Address),
          AddressComplete = paste(AddressComplete, ifelse(is.na(Number), 1, Number), Area, 'Madrid', 'Spain', sep = ', '),
          AreaComplete = paste(Area, 'Madrid', 'Spain', sep = ', '))
 
 # Group full address
-data3 <- data2 %>% 
+data_3_temp <- data2_temp %>% 
   group_by(AddressComplete) %>% 
   summarize(n=n())
 
 # Look for the geolocalization
 # system.time({
-#   data_geopos_address <- lapply(data3$AddressComplete, nominatim_osm) %>%
+#   data_geopos_address <- lapply(data_3_temp$AddressComplete, nominatim_osm) %>%
 #     bind_rows()
 # })
 # saveRDS(object = data_geopos_address, file = file.path('storage', 'data_geopos_address.RData'))
 data_geopos_address <- readRDS(file = file.path('storage', 'data_geopos_address.RData'))
 
 # Group area
-data3 <- data2 %>% 
+data_3_temp <- data2_temp %>% 
   filter(!AddressComplete %in% data_geopos_address$address) %>% 
   group_by(AreaComplete) %>% 
   summarize(n=n())
 
 # Look for the geolocalization
 # system.time({
-#   data_geopos_area <- lapply(data3$AreaComplete, nominatim_osm) %>%
+#   data_geopos_area <- lapply(data_3_temp$AreaComplete, nominatim_osm) %>%
 #     bind_rows()
 # })
 # saveRDS(object = data_geopos_area, file = file.path('storage', 'data_geopos_area.RData'))
 data_geopos_area <- readRDS(file = file.path('storage', 'data_geopos_area.RData'))
 
-data3 <- data2 %>% 
+data_3_temp <- data2_temp %>% 
   left_join(data_geopos_address, by = c("AddressComplete" = "address")) %>% 
   left_join(data_geopos_area, by = c("AreaComplete" = "address")) %>% 
   mutate(Longitude = ifelse(is.na(lon.x), lon.y, lon.x),
          Latitude = ifelse(is.na(lat.x), lat.y, lat.x)) %>% 
-  dplyr::select(-any_of(c('lon.x', 'lat.x', 'lon.y', 'lat.y', 'AddressComplete', 'AreaComplete')))
+  dplyr::select(-lon.x, -lat.x, -lon.y, -lat.y)
 
-skim(data3)
-
-## Map ----
-leaflet(data = data3) %>%
-  addTiles() %>%
-  addMarkers(~Longitude, ~Latitude, 
-             popup = ~as.character(Id), 
-             label = ~as.character(paste(gsub(".*\\sen\\s","", Address), ifelse(is.na(Number), 1, Number), Area,'Madrid', 'Spain', sep = ', ')))
+skim(data_3_temp)
 
 ## Select data ----
 
-data4 <- data3 %>% 
-  # mutate_at(vars(Rent, Sq.Mt), log10) %>%
-  # rename_at(vars(Rent, Sq.Mt), function(x) paste('Log10(', x, ')', sep = '')) %>% 
-  # mutate_if(is.numeric, scale) %>% 
-  dplyr::select(-Id, -Address, -Number, -Area, -District) %>% # Replaced by lat and lon.
+data4 <- data_3_temp %>% 
   dplyr::select(-Penthouse, -Cottage, -Duplex, -Semidetached) %>% # 'Type' is more comprehensive
   filter_at(vars(Outer, Elevator, Bedrooms, Floor, Latitude, Longitude), all_vars(!is.na(.))) # Remove nulls
 
-skim(data4)
+data5 <- data4 %>% 
+  dplyr::select(-Address, -Number, -Area, -District) %>% # Replaced by lat and lon.
+  dplyr::select(-Id, -AddressComplete, -AreaComplete)
+
+skim(data5)
 
 ## Correlation ----
 
 # C:\Users\juanb\OneDrive\GMBD\2020-01-10 - TERM 1\STATISTICAL PROGRAMMING - R (MBD-EN-BL2020J-1_32R369_316435)\Group assignment\GitHub\gmbd_r\!Delivery\EDA-1.R
 
-data4 %>% 
+data5 %>% 
   # dplyr::select(Bedrooms, Sq.Mt, Floor, Longitude, Latitude) %>% 
   dplyr::select_if(is.numeric) %>% 
   chart.Correlation(histogram=TRUE)
@@ -226,17 +220,17 @@ data4 %>%
 ## Impact of removing one feature at a time ----
 
 bind_cols(
-  FeatureRemoved = c('None', colnames(data4)[2:length(colnames(data4))]),
+  FeatureRemoved = c('None', colnames(data5)[2:length(colnames(data5))]),
 bind_rows(
-  coef(glm(Rent ~ ., data = data4, family = gaussian(link = "identity"))),
-  coef(glm(Rent ~ . - Bedrooms, data = data4, family = gaussian(link = "identity"))),
-  coef(glm(Rent ~ . - Sq.Mt, data = data4, family = gaussian(link = "identity"))),
-  coef(glm(Rent ~ . - Floor, data = data4, family = gaussian(link = "identity"))),
-  coef(glm(Rent ~ . - Outer, data = data4, family = gaussian(link = "identity"))),
-  coef(glm(Rent ~ . - Elevator, data = data4, family = gaussian(link = "identity"))),
-  coef(glm(Rent ~ . - Type, data = data4, family = gaussian(link = "identity"))),
-  coef(glm(Rent ~ . - Longitude, data = data4, family = gaussian(link = "identity"))),
-  coef(glm(Rent ~ . - Latitude, data = data4, family = gaussian(link = "identity"))))
+  coef(glm(Rent ~ ., data = data5, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Bedrooms, data = data5, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Sq.Mt, data = data5, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Floor, data = data5, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Outer, data = data5, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Elevator, data = data5, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Type, data = data5, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Longitude, data = data5, family = gaussian(link = "identity"))),
+  coef(glm(Rent ~ . - Latitude, data = data5, family = gaussian(link = "identity"))))
 )
 
 ## Summary per factor ----
@@ -288,7 +282,7 @@ data4 %>%
 # model_full <- glm(Rent ~ ., data = data1)
 # https://stats.stackexchange.com/questions/181113/is-there-any-difference-between-lm-and-glm-for-the-gaussian-family-of-glm
 # full.model1 <- lm(Rent ~ ., data = data1)
-model_full <- glm(Rent ~ ., data = data4, family = gaussian(link = "identity"))
+model_full <- glm(Rent ~ ., data = data5, family = gaussian(link = "identity"))
 summary(model_full)
 
 # Step model
@@ -299,18 +293,19 @@ summary(model_step)
 ## Good opportunities ----
 # Find good opportunities in the market looking for flats that may be under their theoretical estimated price
 
-data6 <- data4
-data6$prediction <- predict(model_step, data6)
-data6 %>% 
-  # filter(Rent<prediction) %>%
-  arrange(desc(prediction/Rent-1))
+data_6_temp <- data4
+data_6_temp$Prediction <- predict(model_step, data_6_temp)
+data_6_temp$Ratio <- data_6_temp$Prediction/data_6_temp$Rent-1
+
+data_6_temp %>% 
+  arrange(desc(Ratio))
 
 ## Model summary table ----
 
 # Scaled
-data7 <- data4 %>% 
+data_7_temp <- data5 %>% 
   mutate_if(is.numeric, scale)
-model_step_scaled <- glm(formula(model_step), data = data7, family = gaussian(link = "identity"))
+model_step_scaled <- glm(formula(model_step), data = data_7_temp, family = gaussian(link = "identity"))
 summary(model_step_scaled)
 
 # First version of the summary
@@ -335,3 +330,35 @@ regression_table <- function(x, x_scaled, level = 0.95) {
 }
 
 regression_table(model_step, model_step_scaled)
+
+
+## Map ----
+
+# Labels for the map ----
+data_6_temp$Label <- 
+  paste('<strong>', data_6_temp$Type, '</strong>', '<br/>', 
+        'Location:', data_6_temp$AddressComplete, '<br/>',
+        'Rent price:', round(data_6_temp$Rent, 1), 'EUR/month', '<br/>',
+        'Theoretical rent price:', round(data_6_temp$Prediction, 1), 'EUR/month', '<br/>',
+        'Id:', data_6_temp$Id
+        ) %>% 
+  lapply(HTML)
+
+library(viridisLite)
+# https://cran.r-project.org/web/packages/viridis/vignettes/intro-to-viridis.html
+
+data_6_temp <- data_6_temp %>% 
+  filter(Ratio>1, Type == 'Piso')
+
+# make palette
+pallete_ <- colorNumeric(palette = magma(20), domain = range(data_6_temp$Ratio))
+
+data_6_temp %>% 
+  leaflet() %>%
+    addProviderTiles(providers$CartoDB.Positron) %>% 
+    addCircleMarkers(~Longitude, ~Latitude, 
+                     popup = ~Label, 
+                     label = ~Type,
+                     color = ~pallete_(Ratio))
+                     # clusterOptions = markerClusterOptions())
+
