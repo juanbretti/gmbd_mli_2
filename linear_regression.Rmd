@@ -1,7 +1,7 @@
 ---
 title: "Machine Learning I: Group Assignment 2: Supervised"
-author: "Group E"
-date: "2/JUL/2020"
+author: "GMBD: 2020 Intake: Group E"
+date: "11/JUL/2020"
 output:
   html_document:
     code_folding: hide
@@ -9,11 +9,22 @@ output:
     toc_float:
       collapsed: true
 ---
-<style>
+
+```{css, echo=FALSE}
 .html-widget {
     margin: auto;
 }
-</style>
+body .main-container {
+  max-width: 1280px !important;
+  width: 1280px !important;
+}
+body {
+  max-width: 1280px !important;
+}
+toc-content {
+    max-width: 1280px !important;
+}
+```
 
 ```{r setup, include=FALSE, eval=TRUE}
 knitr::opts_chunk$set(message = FALSE, echo=TRUE, warning=FALSE)
@@ -30,9 +41,14 @@ library(gmodels)
 library(htmltools)
 library(flipPlots)
 library(viridisLite)
+library(ggridges)
+library(scales)
+library(stringr)
 ```
 
 # Reading data
+
+The source data is read from the original *Excel* file.
 
 ```{r}
 data <- read_excel(path = file.path('data', 'Houses for rent in madrid_assignment 2020.xlsx'), sheet = 'Houses_for_rent_madrid_assignme')
@@ -88,7 +104,13 @@ data1 <- data %>%
     Penthouse = factor(Penthouse, levels = c(0, 1), labels = c('No', 'Yes')), # Ático
     Cottage = factor(Cottage, levels = c(0, 1), labels = c('No', 'Yes')), # Casa o chalet independiente, Caserón, Chalet, Chalet adosado, Chalet pareado
     Duplex = factor(Duplex, levels = c(0, 1), labels = c('No', 'Yes')), # Dúplex
-    Semidetached = factor(Semidetached, levels = c(0, 1), labels = c('No', 'Yes')) #Chalet, Chalet adosado
+    Semidetached = factor(Semidetached, levels = c(0, 1), labels = c('No', 'Yes')), #Chalet, Chalet adosado
+    # Names
+    AddressComplete = gsub(".*\\sen\\s","", Address),
+    AddressComplete = paste(AddressComplete, ifelse(is.na(Number), 1, Number), Area, 'Madrid', 'Spain', sep = ', '),
+    AreaComplete = paste(Area, 'Madrid', 'Spain', sep = ', '),
+    AddressComplete = str_to_title(AddressComplete),
+    AreaComplete =str_to_title(AreaComplete)
   )
 skim(data1)
 ```
@@ -98,8 +120,7 @@ skim(data1)
 
 Using the project http://nominatim.openstreetmap.org, we had converted the properties addresses to latitude and longitude.\
 This allows a better representation of the properties in a map, and also better for the **regression model**.\
-\
-Only 50 addresese were not possible to map.
+
 
 ```{r}
 # https://datascienceplus.com/osm-nominatim-with-r-getting-locations-geo-coordinates-by-its-address/
@@ -122,16 +143,10 @@ nominatim_osm <- function(address = NULL)
   return(data.frame(address = address, lon = as.numeric(d$lon), lat = as.numeric(d$lat)))
 }
 
-# Full address
-data2_temp <- data1 %>% 
-  mutate(AddressComplete = gsub(".*\\sen\\s","", Address),
-         AddressComplete = paste(AddressComplete, ifelse(is.na(Number), 1, Number), Area, 'Madrid', 'Spain', sep = ', '),
-         AreaComplete = paste(Area, 'Madrid', 'Spain', sep = ', '))
-
 # Group full address
-data_3_temp <- data2_temp %>% 
+data_3_temp <- data1 %>% 
   group_by(AddressComplete) %>% 
-  summarize(n=n())
+  summarize(n=n(), .groups = 'drop')
 
 # Look for the geolocalization
 # system.time({
@@ -142,10 +157,10 @@ data_3_temp <- data2_temp %>%
 data_geopos_address <- readRDS(file = file.path('storage', 'data_geopos_address.RData'))
 
 # Group area
-data_3_temp <- data2_temp %>% 
+data_3_temp <- data1 %>% 
   filter(!AddressComplete %in% data_geopos_address$address) %>% 
   group_by(AreaComplete) %>% 
-  summarize(n=n())
+  summarize(n=n(), .groups = 'drop')
 
 # Look for the geolocalization
 # system.time({
@@ -155,19 +170,21 @@ data_3_temp <- data2_temp %>%
 # saveRDS(object = data_geopos_area, file = file.path('storage', 'data_geopos_area.RData'))
 data_geopos_area <- readRDS(file = file.path('storage', 'data_geopos_area.RData'))
 
-data_3_temp <- data2_temp %>% 
+data_3_temp <- data1 %>% 
   left_join(data_geopos_address, by = c("AddressComplete" = "address")) %>% 
   left_join(data_geopos_area, by = c("AreaComplete" = "address")) %>% 
   mutate(Longitude = ifelse(is.na(lon.x), lon.y, lon.x),
          Latitude = ifelse(is.na(lat.x), lat.y, lat.x)) %>% 
   dplyr::select(-lon.x, -lat.x, -lon.y, -lat.y)
+
 ```
+Only `r sum(is.na(data_3_temp$Latitude))` addresese were not possible to map.\
 
 ## Data selection
 
 Because of the new latitude and longitud data, we are able to remove from the input dataset the **Addrees**, **Number**, **Area** and **District**.\
 \
-The following summary is a representation of the input for the **regression model**.
+The following summary is a representation of the **data input** for the **regression model**.
 
 ```{r}
 data4 <- data_3_temp %>% 
@@ -182,8 +199,11 @@ skim(data5)
 ```
 
 # Correlation
-There is a high correlation between the **Rent** price and **Sq.Mt** (flat dimension of the property), and also with the number of **Bedrooms**.\
-The number of **Floor** of the property, has less significance to the dependent variable **Rent**.
+There is a high linear correlation between the **Rent** price and **Sq.Mt** (flat dimension of the property in square meters).\
+Also between the **Rent** and the number of **Bedrooms**.\
+The number of **Floor** of the property and the **Rent** has small correlation, and also having less significance.\
+\
+Another important linear correlation is between **Bedrooms** and **Sq.Mt**.
 
 ```{r}
 # C:\Users\juanb\OneDrive\GMBD\2020-01-10 - TERM 1\STATISTICAL PROGRAMMING - R (MBD-EN-BL2020J-1_32R369_316435)\Group assignment\GitHub\gmbd_r\!Delivery\EDA-1.R
@@ -196,16 +216,21 @@ data5 %>%
 
 # Frequency tables
 
-```{r, R.options = list(width = 200)}
+The *frequency tables* represents the number of elements per combination of -for example-, having or not **Elevator** and type of property like **Ático**.\
+
+```{r}
 # https://dabblingwithdata.wordpress.com/2017/12/20/my-favourite-r-package-for-frequency-tables/
 
-CrossTable(data4$Elevator, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
-CrossTable(data4$Outer, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
-CrossTable(data4$Bedrooms, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
-CrossTable(data4$Floor, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
+ct_elevator <- CrossTable(data4$Elevator, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
+ct_outer <- CrossTable(data4$Outer, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
+# ct_bedrooms <- CrossTable(data4$Bedrooms, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
+# ct_floor <- CrossTable(data4$Floor, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
 ```
 
 # Sankey
+
+A visual way to represent the distribution of elements, is using the *sankey* plot.\
+In particular, we are presenting 2 *interactive* representations.
 
 ```{r}
 # https://www.displayr.com/how-to-create-sankey-diagrams-from-tables-using-r/
@@ -221,7 +246,12 @@ data1 %>%
   SankeyDiagram(link.color = "Target", max.categories = 300) 
 ```
 
+The first plot, shows as "Piso" is the predominan property **Type**.\
+The second plot shows no predominant distribution of **Type** between the **Districts**.
+
 # Densities
+
+A density plot shows the distribution of a numeric variable.
 
 ```{r}
 # data4 %>% 
@@ -236,7 +266,6 @@ data1 %>%
 #   geom_density(alpha=.2) +
 #   labs(x = 'Bedrooms', y = 'Density')
 
-library(ggridges)
 # http://www.sthda.com/english/articles/32-r-graphics-essentials/133-plot-one-variable-frequency-graph-density-distribution-and-more/
 theme_set(theme_ridges())
 
@@ -244,35 +273,126 @@ data4 %>%
   ggplot(aes(x = Sq.Mt, y = Type)) +
   # geom_histogram(aes(y=..density..)) +
   geom_density_ridges(aes(fill = Type), alpha=.2) +
-  labs(x = 'Sq.Mt', y = 'Density') +
+  labs(x = 'Sq.Mt', y = 'Density', title = 'Density distribution of the Sq.Mt per Type') +
   theme(legend.position = "none")
 
 data4 %>%
   ggplot(aes(x = Bedrooms, y = Type)) +
   # geom_histogram(aes(y=..density..)) +
   geom_density_ridges(aes(fill = Type), alpha=.2) +
-  labs(x = 'Bedrooms', y = 'Density') +
+  labs(x = 'Bedrooms', y = 'Density', title = 'Density distribution of the number of Bedrooms per Type') +
   theme(legend.position = "none")
 
 data4 %>%
   ggplot(aes(x = Floor, y = Type)) +
   # geom_histogram(aes(y=..density..)) +
   geom_density_ridges(aes(fill = Type), alpha=.2) +
-  labs(x = 'Floor', y = 'Density') +
+  labs(x = 'Floor', y = 'Density', title = 'Density distribution of the number of Floors per Type') +
   theme(legend.position = "none")
-
-data4 %>%
-  ggplot(aes(x = Sq.Mt)) +
-  stat_ecdf(aes(color = Type, linetype = Type), geom = "step", size = 1) +
-  labs(y = "f(Sq.Mt)")
-
-data4 %>%
-  ggplot(aes(x = Bedrooms)) +
-  stat_ecdf(aes(color = Type, linetype = Type), geom = "step", size = 1) +
-  labs(y = "f(Bedrooms)")
 ```
 
-# Impact of removing one feature at a time
+As per definition, the **Estudios** has only one bedroom.\
+The distribution of number of **Floors** is very sparse between the **Type** of properties.\
+
+# Rent summary per factor
+
+The following analysis presents the **Rent** distribution per different factors.
+
+```{r}
+summary_factor <- function(factor_){
+  data4 %>% 
+    group_by_at(all_of(factor_)) %>% 
+    summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
+              p0.25 = quantile(Rent, probs = 0.25), 
+              p0.50 = quantile(Rent, probs = 0.50), 
+              p0.75 = quantile(Rent, probs = 0.75),
+              .groups = 'drop')
+}
+
+summary_outer <- summary_factor('Outer')
+summary_elevator <- summary_factor('Elevator')
+summary_type <- summary_factor('Type')
+summary_bedrooms <- summary_factor('Bedrooms')
+summary_floor <- summary_factor('Floor')
+
+summary_sqmt <- data4 %>% 
+  mutate(Sq.MtRanges = cut(data4$Sq.Mt, breaks = 6)) %>% 
+  group_by(Sq.MtRanges) %>% 
+  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(), 
+            p0.25 = quantile(Rent, probs = 0.25), 
+            p0.50 = quantile(Rent, probs = 0.50), 
+            p0.75 = quantile(Rent, probs = 0.75),
+            .groups = 'drop')
+
+knitr::kable(summary_outer)
+knitr::kable(summary_elevator)
+knitr::kable(summary_type)
+knitr::kable(summary_bedrooms)
+knitr::kable(summary_sqmt)
+```
+
+A property that has **Outer** access/view, has a mean price decrease of `r scales::percent(filter(summary_outer, Outer == 'Yes')$Mean/filter(summary_outer, Outer == 'No')$Mean-1)`.\
+There aren't any significant change in the mean price by having **Elevator**.\
+\
+The **Floor** number of the property changes the price.\
+For example, the floor 0 has a price of `r scales::percent(filter(summary_floor, Floor == 0)$Mean)`, in comparison with the floor 1, where the price increases `r scales::percent(filter(summary_floor, Floor == 1)$Mean/filter(summary_floor, Floor == 0)$Mean-1)`. This could be because of the presense of patio.\
+\
+For simplicity, we had also created some density plots to confirm the previous observations.\
+It was added a plot of the **Rent/Sq.Mt**, considering those two has the higher linear correlation.
+
+
+```{r}
+data4 %>% 
+  mutate(Sq.MtRanges = cut(data4$Sq.Mt, breaks = 6)) %>% 
+  ggplot(aes(x = Rent/Sq.Mt, y = Sq.MtRanges)) +
+  # geom_histogram(aes(y=..density..)) +
+  geom_density_ridges(aes(fill = Sq.MtRanges), alpha=.2) +
+  labs(x = 'Rent/Sq.Mt', y = 'Sq.Mt range', title = 'Density distribution of Rent per Rent/Sq.Mt') +
+  theme(legend.position = "none")
+
+data4 %>% 
+  mutate(Sq.MtRanges = cut(data4$Sq.Mt, breaks = 6)) %>% 
+  ggplot(aes(x = Rent, y = Sq.MtRanges)) +
+  # geom_histogram(aes(y=..density..)) +
+  geom_density_ridges(aes(fill = Sq.MtRanges), alpha=.2) +
+  labs(x = 'Rent', y = 'Sq.Mt range', title = 'Density distribution of Rent') +
+  theme(legend.position = "none")
+```
+
+From the plot, it can be observed as biggest the area of the property, the lowest the price of **Rent/Sq.Mt**.
+
+# Regression
+
+## Regression model
+
+A linear model using *ordinary least squares* methods were used.\
+To *fit* the model, there were used `r dim(data5)[1]` rows and `r dim(data5)[2]-1` features. Three of those where categorical, so *R* convert then into factors and represents the encoded version.
+
+```{r}
+# Fit full model
+# model_full <- glm(Rent ~ ., data = data1)
+# https://stats.stackexchange.com/questions/181113/is-there-any-difference-between-lm-and-glm-for-the-gaussian-family-of-glm
+# full.model1 <- lm(Rent ~ ., data = data1)
+model_full <- glm(Rent ~ ., data = data5, family = gaussian(link = "identity"))
+summary(model_full)
+```
+The significance of all the variables is high, except for **Bedrooms** and **Outer**.\
+\
+It was also added a *Stepwise Algorithm* to reduce the number of variables in the model, optimizing the *Akaike information criterion (AIC)*.\
+
+```{r}
+# Step model
+model_step <- model_full %>% 
+  stepAIC(trace = TRUE)
+summary(model_step)
+```
+
+There is small change in the model after the optimization.\
+The features **Bedrooms** and **OuterYes** were removed from the final model. Let's not forget there is a high linear correlation between the **Sq.Mt** and the **Bedrooms**.
+
+## Impact of removing one feature at a time
+
+The following is an excerise of remove one feature at a time and compare the *linear regression* coeficients.
 
 ```{r}
 bind_cols(
@@ -287,84 +407,15 @@ bind_rows(
   coef(glm(Rent ~ . - Type, data = data5, family = gaussian(link = "identity"))),
   coef(glm(Rent ~ . - Longitude, data = data5, family = gaussian(link = "identity"))),
   coef(glm(Rent ~ . - Latitude, data = data5, family = gaussian(link = "identity"))))
-)
+) %>% 
+  knitr::kable()
 ```
 
-# Summary per factor
+The removal of **Sq.Mt** makes a big change in the coefficients.\
+Also the coeficient of `r coef(glm(Rent ~ ., data = data5, family = gaussian(link = "identity")))[['Sq.Mt']]` stays almost inmutable by removing the other features.
+This number represents a change of 1 unit of **Rent** by changing 1 unit of **Sq.Mt**. That means, 1 extra square meter of property will increase the rent price by `r coef(glm(Rent ~ ., data = data5, family = gaussian(link = "identity")))[['Sq.Mt']]` EUR.
 
-```{r}
-summary_factor <- function(factor_){
-  data4 %>% 
-    group_by_at(all_of(factor_)) %>% 
-    summarise(Mean=mean(Rent), SD=sd(Rent), N=n(),
-              p0.25 = quantile(Rent, probs = 0.25), 
-              p0.50 = quantile(Rent, probs = 0.50), 
-              p0.75 = quantile(Rent, probs = 0.75),
-              .groups = 'drop')
-}
-
-summary_factor('Outer')
-summary_factor('Elevator')
-summary_factor('Type')
-summary_factor('Bedrooms')
-summary_factor('Floor')
-
-data4 %>% 
-  mutate(Sq.MtRanges = cut(data4$Sq.Mt, breaks = 6)) %>% 
-  group_by(Sq.MtRanges) %>% 
-  summarise(Mean=mean(Rent), SD=sd(Rent), N=n(), 
-            p0.25 = quantile(Rent, probs = 0.25), 
-            p0.50 = quantile(Rent, probs = 0.50), 
-            p0.75 = quantile(Rent, probs = 0.75),
-            .groups = 'drop')
-
-data4 %>% 
-  mutate(Sq.MtRanges = cut(data4$Sq.Mt, breaks = 6)) %>% 
-  ggplot(aes(x = Rent/Sq.Mt, y = Sq.MtRanges)) +
-  # geom_histogram(aes(y=..density..)) +
-  geom_density_ridges(aes(fill = Sq.MtRanges), alpha=.2) +
-  labs(x = 'Rent/Sq.Mt', y = 'Sq.Mt range') +
-  theme(legend.position = "none")
-
-data4 %>% 
-  mutate(Sq.MtRanges = cut(data4$Sq.Mt, breaks = 6)) %>% 
-  ggplot(aes(x = Rent, y = Sq.MtRanges)) +
-  # geom_histogram(aes(y=..density..)) +
-  geom_density_ridges(aes(fill = Sq.MtRanges), alpha=.2) +
-  labs(x = 'Rent', y = 'Sq.Mt range') +
-  theme(legend.position = "none")
-```
-
-# Regression model
-
-```{r}
-# Fit full model
-# model_full <- glm(Rent ~ ., data = data1)
-# https://stats.stackexchange.com/questions/181113/is-there-any-difference-between-lm-and-glm-for-the-gaussian-family-of-glm
-# full.model1 <- lm(Rent ~ ., data = data1)
-model_full <- glm(Rent ~ ., data = data5, family = gaussian(link = "identity"))
-summary(model_full)
-
-# Step model
-model_step <- model_full %>% 
-  stepAIC(trace = TRUE)
-summary(model_step)
-```
-
-# Good opportunities
-
-```{r}
-# Find good opportunities in the market looking for flats that may be under their theoretical estimated price
-
-data_6_temp <- data4
-data_6_temp$Prediction <- predict(model_step, data_6_temp)
-data_6_temp$Ratio <- data_6_temp$Prediction/data_6_temp$Rent-1
-
-data_6_temp %>% 
-  arrange(desc(Ratio))
-```
-
-# Model summary table: Scaled
+## Model summary table: Scaled
 
 ```{r}
 # Scaled
@@ -382,7 +433,9 @@ summary_scaled <- summary(model_step_scaled)$coefficients %>%
   rownames_to_column() %>% 
   rename_all(function(x) paste(x, 'scaled', sep = '_'))
 bind_cols(summary_unit,
-          dplyr::select(summary_scaled, Estimate_scaled, Std..Error_scaled, t.value_scaled))
+          dplyr::select(summary_scaled, Estimate_scaled, Std..Error_scaled, t.value_scaled)) %>%
+  magrittr::set_colnames(c('Feature', 'Estimate', 'Std. Error', 't value', 'Pr(>|t|)', 'Estimate scaled', 'Std. Error scaled', 't value scaled')) %>% 
+  knitr::kable()
 
 # Second version of the summary
 regression_table <- function(x, x_scaled, level = 0.95) {
@@ -394,10 +447,38 @@ regression_table <- function(x, x_scaled, level = 0.95) {
   return(table)
 }
 
-regression_table(model_step, model_step_scaled)
+#regression_table(model_step, model_step_scaled) %>% 
+#  knitr::kable()
 ```
 
-# Map
+The *scaling*, allows to check the importance of a variable, for example the **TypeChalet adosado** is the one that produces the highest variation of the **Rent**, and also the relation is *negative*. See column *Estimate scaled*.\
+The second one, is the **Sq.Mt**, afecting in a positive way.
+
+# Good opportunities
+
+Following, there is a list of the top 15 properties with *Real* price bellow their theoretical *Predicted* price.\
+The **Ratio** captures how many times better the *Real* price is compared to the *Predicted*.\
+The **Rent** is in *EUR/month*.
+
+```{r}
+# Find good opportunities in the market looking for flats that may be under their theoretical estimated price
+
+data_6_temp <- data4
+data_6_temp$Prediction <- predict(model_step, data_6_temp)
+data_6_temp$Ratio <- data_6_temp$Prediction/data_6_temp$Rent-1
+
+data_6_temp %>% 
+  filter(Ratio>0) %>% 
+  top_n(Ratio, n = 15) %>% 
+  dplyr::select(Id, Type, AddressComplete, Rent, Ratio) %>% 
+  mutate(Ratio = round(Ratio, 2)) %>% 
+  arrange(desc(Ratio)) %>%
+  knitr::kable()
+```
+
+## Map
+
+Following, are presented the most relevant renting opportunities per **Type**.
 
 ```{r}
 # Labels for the map ----
@@ -411,7 +492,7 @@ data_6_temp$Label <-
   lapply(HTML)
 ```
 
-## Piso
+### Piso
 Interesting opportunities for **Piso**.
 
 ```{r}
@@ -432,7 +513,7 @@ data_7_temp %>%
                      # clusterOptions = markerClusterOptions())
 ```
 
-## Ático
+### Ático
 Interesting opportunities for **Ático**.
 
 ```{r}
@@ -453,7 +534,7 @@ data_7_temp %>%
                      # clusterOptions = markerClusterOptions())
 ```
 
-## Estudio
+### Estudio
 Interesting opportunities for **Estudio**.
 
 ```{r}
