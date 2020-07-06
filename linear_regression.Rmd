@@ -394,7 +394,9 @@ summary(model_step)
 ```
 
 There is small change in the model after the optimization.\
-The features **Bedrooms** and **OuterYes** were removed from the final model. Let's not forget there is a high linear correlation between the **Sq.Mt** and the **Bedrooms**.
+The features **Bedrooms** and **OuterYes** were removed from the final model. Let's not forget there is a high linear correlation between the **Sq.Mt** and the **Bedrooms**.\
+\
+The *adjusted R squared* is `r round(with(summary(model_step), 1 - deviance/null.deviance), 3)`.
 
 ### Checking main statistical assumptions
 
