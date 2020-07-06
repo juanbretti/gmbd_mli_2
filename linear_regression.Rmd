@@ -228,16 +228,18 @@ ct_bedrooms <- CrossTable(data4$Bedrooms, data4$Type, expected = FALSE, prop.t =
 ct_floor <- CrossTable(data4$Floor, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
 ```
 
-Frequency table between property *Type* and *Elevator*. Measured in number of properties.
+Frequency table between property **Type** and **Elevator**. Measured in number of properties.
 
 ```{r}
-table(data4$Elevator, data4$Type)
+table(data4$Elevator, data4$Type) %>% 
+  knitr::kable()
 ```
 
-Frequency table between property *Type* and *Outer*. Measured in number of properties.
+Frequency table between property **Type** and **Outer**. Measured in number of properties.
 
 ```{r}
-table(data4$Elevator, data4$Type)
+table(data4$Elevator, data4$Type) %>% 
+  knitr::kable()
 ```
 
 # Sankey
@@ -545,7 +547,6 @@ data_7_temp %>%
                      popup = ~Label, 
                      label = ~Type,
                      color = ~pallete_(Ratio))
-                     # clusterOptions = markerClusterOptions())
 ```
 
 ### Ático
@@ -567,7 +568,6 @@ data_7_temp %>%
                      popup = ~Label, 
                      label = ~Type,
                      color = ~pallete_(Ratio))
-                     # clusterOptions = markerClusterOptions())
 ```
 
 ### Estudio
@@ -589,5 +589,4 @@ data_7_temp %>%
                      popup = ~Label, 
                      label = ~Type,
                      color = ~pallete_(Ratio))
-                     # clusterOptions = markerClusterOptions())
 ```
