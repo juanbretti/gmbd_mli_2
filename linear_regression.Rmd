@@ -44,6 +44,7 @@ library(viridisLite)
 library(ggridges)
 library(scales)
 library(stringr)
+library(fitdistrplus)
 ```
 
 # Reading data
@@ -198,21 +199,9 @@ data5 <- data4 %>%
 skim(data5)
 ```
 
-# Correlation
-There is a high linear correlation between the **Rent** price and **Sq.Mt** (flat dimension of the property in square meters).\
-Also between the **Rent** and the number of **Bedrooms**.\
-The number of **Floor** of the property and the **Rent** has small correlation, and also having less significance.\
-\
-Another important linear correlation is between **Bedrooms** and **Sq.Mt**.
-
-```{r}
-# C:\Users\juanb\OneDrive\GMBD\2020-01-10 - TERM 1\STATISTICAL PROGRAMMING - R (MBD-EN-BL2020J-1_32R369_316435)\Group assignment\GitHub\gmbd_r\!Delivery\EDA-1.R
-
-data5 %>% 
-  # dplyr::select(Bedrooms, Sq.Mt, Floor, Longitude, Latitude) %>% 
-  dplyr::select_if(is.numeric) %>% 
-  chart.Correlation(histogram=TRUE)
-```
+The variables **Outer**, **Elevator** and **Type** will be used as binary variables.\
+The other variables (**Bedroom**, **Sq.Mt**, **Floor**, **Longitude** and **Latitude**) will be used as continuous variables.\
+In particular, are consider **Bedroom** and **Floor** as a continuous variables. To calculate a single coefficient from the regression on how "a unit of those variables affect the **Rent**".
 
 # Frequency tables
 
@@ -407,6 +396,58 @@ summary(model_step)
 There is small change in the model after the optimization.\
 The features **Bedrooms** and **OuterYes** were removed from the final model. Let's not forget there is a high linear correlation between the **Sq.Mt** and the **Bedrooms**.
 
+### Checking main statistical assumptions
+
+Basic linear regression model is built under the following statistical assumptions.
+
+#### Homoscedasticity in residuals
+
+The following plot shows there is no apparent *Heteroscedasticity*. Only a few datapoints are outside the range.
+
+```{r}
+plot(model_step, which=1)
+```
+
+#### Correlation
+
+There is a high linear correlation between the **Rent** price and **Sq.Mt** (flat dimension of the property in square meters).\
+Also between the **Rent** and the number of **Bedrooms**.\
+The number of **Floor** of the property and the **Rent** has small correlation, and also having less significance.\
+\
+Another important linear correlation is between **Bedrooms** and **Sq.Mt**.\
+\
+There is no visible correlation between the *Explanatory/Exogenous* variables.
+
+```{r}
+data5 %>% 
+  # dplyr::select(Bedrooms, Sq.Mt, Floor, Longitude, Latitude) %>% 
+  dplyr::select_if(is.numeric) %>% 
+  chart.Correlation(histogram=TRUE)
+```
+
+#### Correlation between residual observations
+
+Lack of correlation between residual observations.\
+The values are the *log10* of the response.
+
+
+```{r}
+temp_lag <- tibble(t0 = predict(model_step, data4) - data4$Rent,
+                       `t-1` = lag(predict(model_step, data4) - data4$Rent, 1))
+plot(log10(temp_lag), main = 'Correlation between log residual observations')
+```
+
+#### Normality in residuals
+
+We cannot confirm the normality in the residuals.\
+The reason could be ommision of relevant variables.
+
+```{r}
+hist(predict(model_step, data4) - data4$Rent, main = 'Histogram of the residuals')
+
+temp <- descdist(predict(model_step, data4) - data4$Rent)
+```
+
 ## Impact of removing one feature at a time
 
 The following is an excerise of remove one feature at a time and compare the *linear regression* coeficients.
@@ -430,7 +471,8 @@ bind_rows(
 
 The removal of **Sq.Mt** makes a big change in the coefficients.\
 Also the coeficient of `r coef(glm(Rent ~ ., data = data5, family = gaussian(link = "identity")))[['Sq.Mt']]` stays almost inmutable by removing the other features.
-This number represents a change of 1 unit of **Rent** by changing 1 unit of **Sq.Mt**. That means, 1 extra square meter of property will increase the rent price by `r coef(glm(Rent ~ ., data = data5, family = gaussian(link = "identity")))[['Sq.Mt']]` EUR.
+This number represents a change of 1 unit of **Rent** by changing 1 unit of **Sq.Mt** as long the other variables remains constant    . \
+That means, 1 extra square meter of property will increase the rent price by `r coef(glm(Rent ~ ., data = data5, family = gaussian(link = "identity")))[['Sq.Mt']]` EUR as long the other variables remains constant.
 
 ## Model summary table: Scaled
 
@@ -475,20 +517,21 @@ regression_table <- function(x, x_scaled, level = 0.95) {
 #  knitr::kable()
 ```
 
-The *scaling*, allows to check the importance of a variable, for example the **TypeChalet adosado** is the one that produces the highest variation of the **Rent**, and also the relation is *negative*. See column *Estimate scaled*.\
+The *scaling*, allows to check the importance of a variable, for example the **TypeChalet adosado** is the one that produces the highest variation of the **Rent**, and also the relation is *negative*. See column *Estimate scaled* (as long the other variables remains constant).\
 The second one, is the **Sq.Mt**, afecting in a positive way.
 
 ```{r}
 data_8_temp <- summary(model_step_scaled)$coefficients[, 'Estimate']
-data_8_temp <- data.frame(Variable = names(data_8_temp), Coefficient = as.numeric(data_8_temp))
-data_8_temp <- arrange(data_8_temp, abs(Coefficient))
+data_8_temp <- data.frame(Variable = names(data_8_temp), StandardizedCoefficient = as.numeric(data_8_temp))
+data_8_temp <- arrange(data_8_temp, abs(StandardizedCoefficient))
 data_8_temp$Variable <- factor(data_8_temp$Variable, levels = data_8_temp$Variable)
 
-ggplot(data=data_8_temp, aes(x=Variable, y=Coefficient)) +
+ggplot(data=data_8_temp, aes(x=Variable, y=StandardizedCoefficient)) +
   geom_bar(stat="identity") +
   coord_flip()
 ```
-The previous plot, shows the importance per variable in the same unit. Where **Type Chalet adosado* has the biggest impact in the **Rent**.
+The previous plot, shows the importance per variable in the same unit. Where **Type Chalet adosado** has the biggest impact in the **Rent**, as long the other variables remains constant.\
+The sign tells if the variable affects the **Rent** in a possitive or negative way. That is, one unit of the variable increase or decrease the **Rent**.
 
 # Good opportunities
 
