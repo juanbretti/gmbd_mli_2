@@ -396,7 +396,7 @@ summary(model_step)
 There is small change in the model after the optimization.\
 The features **Bedrooms** and **OuterYes** were removed from the final model. Let's not forget there is a high linear correlation between the **Sq.Mt** and the **Bedrooms**.\
 \
-The *adjusted R squared* is `r round(with(summary(model_step), 1 - deviance/null.deviance), 3)`.
+The *adjusted R squared* is `r round(with(summary(model_step), 1 - deviance/null.deviance), 3)`. That adjusted $R^{2}$ value, may be interpreted as the percentage of the variability / variation of Y explained by our regression.
 
 ### Checking main statistical assumptions
 
@@ -416,9 +416,7 @@ There is a high linear correlation between the **Rent** price and **Sq.Mt** (fla
 Also between the **Rent** and the number of **Bedrooms**.\
 The number of **Floor** of the property and the **Rent** has small correlation, and also having less significance.\
 \
-Another important linear correlation is between **Bedrooms** and **Sq.Mt**.\
-\
-There is no visible correlation between the *Explanatory/Exogenous* variables.
+There is only visible correlation between the *Explanatory/Exogenous* variables **Bedrooms** and **Sq.Mt** ($R^{2} = 0.73$, with a high significance). As mentioned before, the *Stepwise Algorithm* has removed **Bedrooms**.
 
 ```{r}
 data5 %>% 
@@ -430,13 +428,13 @@ data5 %>%
 #### Correlation between residual observations
 
 Lack of correlation between residual observations.\
-The values are the *log10* of the response.
+The values are *scaled* and *centered*.
 
 
 ```{r}
-temp_lag <- tibble(t0 = predict(model_step, data4) - data4$Rent,
-                       `t-1` = lag(predict(model_step, data4) - data4$Rent, 1))
-plot(log10(temp_lag), main = 'Correlation between log residual observations')
+temp_lag <- tibble(t0 = scale(predict(model_step, data4) - data4$Rent),
+                   `t-1` = lag(t0, 1))
+plot(temp_lag, main = 'Correlation between log residual observations', ylim=c(-2,2), xlim=c(-2,2))
 ```
 
 #### Normality in residuals
@@ -448,7 +446,12 @@ The reason could be ommision of relevant variables.
 hist(predict(model_step, data4) - data4$Rent, main = 'Histogram of the residuals')
 
 temp <- descdist(predict(model_step, data4) - data4$Rent)
+
+shapiro.test(predict(model_step, data4) - data4$Rent)
 ```
+
+From the output of the **Shapiro-Wilk normality test**, the *p-value < 0.05* implying that the distribution of the data is significantly different from *normal distribution*. In other words, we cannot assume the normality.\
+More variables should be included in the model to improve the capabilities.
 
 ## Impact of removing one feature at a time
 
