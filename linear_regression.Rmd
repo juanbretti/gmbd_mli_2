@@ -178,7 +178,7 @@ data_3_temp <- data1 %>%
   dplyr::select(-lon.x, -lat.x, -lon.y, -lat.y)
 
 ```
-Only `r sum(is.na(data_3_temp$Latitude))` addresese were not possible to map.\
+Only `r data_3_temp %>% filter_at(vars(Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.))) %>% summarise(sum(is.na(Latitude))) %>% as.numeric` addresese were not possible to map.\
 
 ## Data selection
 
@@ -218,13 +218,26 @@ data5 %>%
 
 The *frequency tables* represents the number of elements per combination of -for example-, having or not **Elevator** and type of property like **Ático**.\
 
-```{r}
+```{r, eval=FALSE}
 # https://dabblingwithdata.wordpress.com/2017/12/20/my-favourite-r-package-for-frequency-tables/
+# These outpus is not being shown, for format and display problems in the R Markdown compilation.
 
 ct_elevator <- CrossTable(data4$Elevator, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
 ct_outer <- CrossTable(data4$Outer, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
-# ct_bedrooms <- CrossTable(data4$Bedrooms, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
-# ct_floor <- CrossTable(data4$Floor, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
+ct_bedrooms <- CrossTable(data4$Bedrooms, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
+ct_floor <- CrossTable(data4$Floor, data4$Type, expected = FALSE, prop.t = FALSE, prop.chisq = FALSE)
+```
+
+Frequency table between property *Type* and *Elevator*. Measured in number of properties.
+
+```{r}
+table(data4$Elevator, data4$Type)
+```
+
+Frequency table between property *Type* and *Outer*. Measured in number of properties.
+
+```{r}
+table(data4$Elevator, data4$Type)
 ```
 
 # Sankey
@@ -379,11 +392,13 @@ summary(model_full)
 The significance of all the variables is high, except for **Bedrooms** and **Outer**.\
 \
 It was also added a *Stepwise Algorithm* to reduce the number of variables in the model, optimizing the *Akaike information criterion (AIC)*.\
+The following, is the summary of the final model where the Stepwise Algorith had removed the variabl *Bedrooms*.\
+
 
 ```{r}
 # Step model
 model_step <- model_full %>% 
-  stepAIC(trace = TRUE)
+  stepAIC(trace = FALSE)
 summary(model_step)
 ```
 
@@ -417,13 +432,20 @@ This number represents a change of 1 unit of **Rent** by changing 1 unit of **Sq
 
 ## Model summary table: Scaled
 
+Scaling the variables, allows the reader to compare the different variables in the model.
+
 ```{r}
 # Scaled
 data_7_temp <- data5 %>% 
   mutate_if(is.numeric, scale)
 model_step_scaled <- glm(formula(model_step), data = data_7_temp, family = gaussian(link = "identity"))
 summary(model_step_scaled)
+```
 
+As summary, the coefficient of the model are the following.\
+This analysis, compares the measured and unitless (*scaled*) variables.
+
+```{r}
 # First version of the summary
 summary_unit <- summary(model_step)$coefficients %>% 
   data.frame() %>% 
@@ -453,6 +475,18 @@ regression_table <- function(x, x_scaled, level = 0.95) {
 
 The *scaling*, allows to check the importance of a variable, for example the **TypeChalet adosado** is the one that produces the highest variation of the **Rent**, and also the relation is *negative*. See column *Estimate scaled*.\
 The second one, is the **Sq.Mt**, afecting in a positive way.
+
+```{r}
+data_8_temp <- summary(model_step_scaled)$coefficients[, 'Estimate']
+data_8_temp <- data.frame(Variable = names(data_8_temp), Coefficient = as.numeric(data_8_temp))
+data_8_temp <- arrange(data_8_temp, abs(Coefficient))
+data_8_temp$Variable <- factor(data_8_temp$Variable, levels = data_8_temp$Variable)
+
+ggplot(data=data_8_temp, aes(x=Variable, y=Coefficient)) +
+  geom_bar(stat="identity") +
+  coord_flip()
+```
+The previous plot, shows the importance per variable in the same unit. Where **Type Chalet adosado* has the biggest impact in the **Rent**.
 
 # Good opportunities
 
@@ -493,7 +527,8 @@ data_6_temp$Label <-
 ```
 
 ### Piso
-Interesting opportunities for **Piso**.
+Interesting opportunities for **Piso** or *Flat*.\
+Only showing the ones we were able to geolocate (assign latitude and longitude), and also the ration between estimated rent price and real, is greater than 1x.
 
 ```{r}
 data_7_temp <- data_6_temp %>% 
@@ -514,7 +549,8 @@ data_7_temp %>%
 ```
 
 ### Ático
-Interesting opportunities for **Ático**.
+Interesting opportunities for **Ático**.\
+Additionally, we are adding *Penthouse* opportunities.
 
 ```{r}
 data_7_temp <- data_6_temp %>% 
@@ -535,7 +571,8 @@ data_7_temp %>%
 ```
 
 ### Estudio
-Interesting opportunities for **Estudio**.
+Interesting opportunities for **Estudio**.\
+These properties, are single-storey.
 
 ```{r}
 data_7_temp <- data_6_temp %>% 
