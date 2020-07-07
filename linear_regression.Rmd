@@ -113,6 +113,7 @@ data1 <- data %>%
     AddressComplete = str_to_title(AddressComplete),
     AreaComplete =str_to_title(AreaComplete)
   )
+
 skim(data1)
 ```
 
@@ -185,7 +186,9 @@ Only `r data_3_temp %>% filter_at(vars(Outer, Elevator, Bedrooms, Floor), all_va
 
 Because of the new latitude and longitud data, we are able to remove from the input dataset the **Addrees**, **Number**, **Area** and **District**.\
 \
-The following summary is a representation of the **data input** for the **regression model**.
+The following summary is a representation of the **data input** for the **regression model**.\
+\
+Was also removed `r data_3_temp %>% filter_at(vars(Outer, Elevator, Bedrooms, Floor), any_vars(is.na(.))) %>% nrow()` properties because no values at any of the relevant variables, i.e., **Outer**, **Elevator**, **Bedrooms**, **Floor**).
 
 ```{r}
 data4 <- data_3_temp %>% 
