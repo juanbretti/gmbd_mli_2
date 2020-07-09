@@ -60,13 +60,13 @@ data <- read_excel(path = file.path('data', 'Houses for rent in madrid_assignmen
 
 Some data preparation was done to the RAW data.\
 Including:\
-* Normalization at the address\
+* Normalization of the address\
 * Extraction of property type from the description\
 * Completion of data\
-  * For the **Chalet**: Floor, Outer and Elevator were revised\
-  * For **Estudio**: Bedrooms were revised\
-  * For **Chalet pareado**: Floor and Outer were revised\
-  * For **Chalet adosado**: Floor and Outer were revised\
+  * For the **Chalet**: Variables Floor, Outer and Elevator were revised\
+  * For **Estudio**: Variable Bedrooms was revised\
+  * For **Chalet pareado**: Variables Floor and Outer were revised\
+  * For **Chalet adosado**: Variables Floor and Outer were revised\
 \
 A summary of the data is presented.
 
@@ -120,8 +120,8 @@ skim(data1)
 # Feature engineering
 ## Adding geolocalization
 
-Using the project http://nominatim.openstreetmap.org, we had converted the properties addresses to latitude and longitude.\
-This allows a better representation of the properties in a map, and also better for the **regression model**.\
+Using the project http://nominatim.openstreetmap.org, we converted the properties addresses to latitude and longitude.\
+This allows a better representation of the properties in a map, and also improves the **regression model**.\
 
 
 ```{r}
@@ -180,15 +180,15 @@ data_3_temp <- data1 %>%
   dplyr::select(-lon.x, -lat.x, -lon.y, -lat.y)
 
 ```
-Only `r data_3_temp %>% filter_at(vars(Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.))) %>% summarise(sum(is.na(Latitude))) %>% as.numeric` addresese were not possible to map.\
+Only `r data_3_temp %>% filter_at(vars(Outer, Elevator, Bedrooms, Floor), all_vars(!is.na(.))) %>% summarise(sum(is.na(Latitude))) %>% as.numeric` addresses were not possible to map.\
 
 ## Data selection
 
-Because of the new latitude and longitud data, we are able to remove from the input dataset the **Addrees**, **Number**, **Area** and **District**.\
+Because of the new latitude and longitude data, we are able to remove **Addrees**, **Number**, **Area** and **District** from the input dataset.\
 \
 The following summary is a representation of the **data input** for the **regression model**.\
 \
-Was also removed `r data_3_temp %>% filter_at(vars(Outer, Elevator, Bedrooms, Floor), any_vars(is.na(.))) %>% nrow()` properties because no values at any of the relevant variables, i.e., **Outer**, **Elevator**, **Bedrooms**, **Floor**).
+We als removed `r data_3_temp %>% filter_at(vars(Outer, Elevator, Bedrooms, Floor), any_vars(is.na(.))) %>% nrow()` properties because no values at any of the relevant variables, i.e., **Outer**, **Elevator**, **Bedrooms**, **Floor**) were available.
 
 ```{r}
 data4 <- data_3_temp %>% 
@@ -204,11 +204,11 @@ skim(data5)
 
 The variables **Outer**, **Elevator** and **Type** will be used as binary variables.\
 The other variables (**Bedroom**, **Sq.Mt**, **Floor**, **Longitude** and **Latitude**) will be used as continuous variables.\
-In particular, are consider **Bedroom** and **Floor** as a continuous variables. To calculate a single coefficient from the regression on how "a unit of those variables affect the **Rent**".
+In particular **Bedroom** and **Floor** are considered as continuous variables. To calculate a single coefficient from the regression on how "a unit of those variables affect the **Rent**".
 
 # Frequency tables
 
-The *frequency tables* represents the number of elements per combination of -for example-, having or not **Elevator** and type of property like **Ático**.\
+The *frequency tables* represent the number of elements per combination of -for example-, having or not **Elevator** and type of property like **Ático**.\
 
 ```{r, eval=FALSE}
 # https://dabblingwithdata.wordpress.com/2017/12/20/my-favourite-r-package-for-frequency-tables/
@@ -253,7 +253,7 @@ data1 %>%
   SankeyDiagram(link.color = "Target", max.categories = 300) 
 ```
 
-The first plot, shows as "Piso" is the predominan property **Type**.\
+The first plot, shows that "Piso" is the predominan property **Type**.\
 The second plot shows no predominant distribution of **Type** between the **Districts**.
 
 # Densities
@@ -298,7 +298,7 @@ data4 %>%
   theme(legend.position = "none")
 ```
 
-As per definition, the **Estudios** has only one bedroom.\
+As per definition, the **Estudios** have only one room, usually including both a sleeping are and kitchen.\
 The distribution of number of **Floors** is very sparse between the **Type** of properties.\
 
 # Rent summary per factor
@@ -339,13 +339,13 @@ knitr::kable(summary_sqmt)
 ```
 
 A property that has **Outer** access/view, has a mean price decrease of `r scales::percent(filter(summary_outer, Outer == 'Yes')$Mean/filter(summary_outer, Outer == 'No')$Mean-1)`.\
-There aren't any significant change in the mean price by having **Elevator**.\
+There aren't any significant changes in the mean price by having **Elevator**.\
 \
 The **Floor** number of the property changes the price.\
-For example, the floor 0 has a price of `r scales::percent(filter(summary_floor, Floor == 0)$Mean)`, in comparison with the floor 1, where the price increases `r scales::percent(filter(summary_floor, Floor == 1)$Mean/filter(summary_floor, Floor == 0)$Mean-1)`. This could be because of the presense of patio.\
+For example, the floor 0 has a price of `r scales::percent(filter(summary_floor, Floor == 0)$Mean)`, in comparison with the floor 1, where the price increases `r scales::percent(filter(summary_floor, Floor == 1)$Mean/filter(summary_floor, Floor == 0)$Mean-1)`. This could be because of the presence of a patio.\
 \
-For simplicity, we had also created some density plots to confirm the previous observations.\
-It was added a plot of the **Rent/Sq.Mt**, considering those two has the higher linear correlation.
+For simplicity, we also created some density plots to confirm the previous observations.\
+We added a plot of the **Rent/Sq.Mt**, considering those two have the higher linear correlation.
 
 
 ```{r}
@@ -366,14 +366,14 @@ data4 %>%
   theme(legend.position = "none")
 ```
 
-From the plot, it can be observed as biggest the area of the property, the lowest the price of **Rent/Sq.Mt**.
+From the plot, it can be observed the bigger the area of the property, the lower the price of **Rent/Sq.Mt**.
 
 # Regression
 
 ## Regression model
 
-A linear model using *ordinary least squares* methods were used.\
-To *fit* the model, there were used `r dim(data5)[1]` rows and `r dim(data5)[2]-1` features. Three of those where categorical, so *R* convert then into factors and represents the encoded version.
+A linear model using *ordinary least squares* methods was used.\
+To *fit* the model, we used `r dim(data5)[1]` rows and `r dim(data5)[2]-1` features. Three of those where categorical, so *R* converts them into factors and represents the encoded version.
 
 ```{r}
 # Fit full model
@@ -385,8 +385,8 @@ summary(model_full)
 ```
 The significance of all the variables is high, except for **Bedrooms** and **Outer**.\
 \
-It was also added a *Stepwise Algorithm* to reduce the number of variables in the model, optimizing the *Akaike information criterion (AIC)*.\
-The following, is the summary of the final model where the Stepwise Algorith had removed the variabl *Bedrooms*.\
+We also added a *Stepwise Algorithm* to reduce the number of variables in the model, optimizing the *Akaike information criterion (AIC)*.\
+The following is the summary of the final model where the Stepwise Algorith has removed the variable *Bedrooms*.\
 
 
 ```{r}
@@ -399,11 +399,11 @@ summary(model_step)
 There is small change in the model after the optimization.\
 The features **Bedrooms** and **OuterYes** were removed from the final model. Let's not forget there is a high linear correlation between the **Sq.Mt** and the **Bedrooms**.\
 \
-The *adjusted R squared* is `r round(with(summary(model_step), 1 - deviance/null.deviance), 3)`. That adjusted $R^{2}$ value, may be interpreted as the percentage of the variability / variation of Y explained by our regression.
+The *adjusted R squared* is `r round(with(summary(model_step), 1 - deviance/null.deviance), 3)`. That adjusted $R^{2}$ value may be interpreted as the percentage of the variability / variation of Y (rent) explained by our regression.
 
 ### Checking main statistical assumptions
 
-Basic linear regression model is built under the following statistical assumptions.
+The basic linear regression model is built under the following statistical assumptions.
 
 #### Homoscedasticity in residuals
 
@@ -417,9 +417,9 @@ plot(model_step, which=1)
 
 There is a high linear correlation between the **Rent** price and **Sq.Mt** (flat dimension of the property in square meters).\
 Also between the **Rent** and the number of **Bedrooms**.\
-The number of **Floor** of the property and the **Rent** has small correlation, and also having less significance.\
+The number of **Floors** of the property and the **Rent** has a small correlation, and also has less significance.\
 \
-There is only visible correlation between the *Explanatory/Exogenous* variables **Bedrooms** and **Sq.Mt** ($R^{2} = 0.73$, with a high significance). As mentioned before, the *Stepwise Algorithm* has removed **Bedrooms**.
+There is only a visible correlation between the *Explanatory/Exogenous* variables **Bedrooms** and **Sq.Mt** ($R^{2} = 0.73$, with a high significance). As mentioned before, the *Stepwise Algorithm* has removed **Bedrooms**.
 
 ```{r}
 data5 %>% 
@@ -443,7 +443,7 @@ plot(temp_lag, main = 'Correlation between log residual observations', ylim=c(-2
 #### Normality in residuals
 
 We cannot confirm the normality in the residuals.\
-The reason could be ommision of relevant variables.
+The reason could be the ommission of relevant variables.
 
 ```{r}
 hist(predict(model_step, data4) - data4$Rent, main = 'Histogram of the residuals')
@@ -458,7 +458,7 @@ More variables should be included in the model to improve the capabilities.
 
 ## Impact of removing one feature at a time
 
-The following is an excerise of remove one feature at a time and compare the *linear regression* coeficients.
+The following is an excerise of removing one feature at a time and compare the *linear regression* coeficients.
 
 ```{r}
 bind_cols(
@@ -479,7 +479,7 @@ bind_rows(
 
 The removal of **Sq.Mt** makes a big change in the coefficients.\
 Also the coeficient of `r coef(glm(Rent ~ ., data = data5, family = gaussian(link = "identity")))[['Sq.Mt']]` stays almost inmutable by removing the other features.
-This number represents a change of 1 unit of **Rent** by changing 1 unit of **Sq.Mt** as long the other variables remains constant    . \
+This number represents a change of 1 unit of **Rent** by changing 1 unit of **Sq.Mt** as long as the other variables remain constant    . \
 That means, 1 extra square meter of property will increase the rent price by `r coef(glm(Rent ~ ., data = data5, family = gaussian(link = "identity")))[['Sq.Mt']]` EUR as long the other variables remains constant.
 
 ## Model summary table: Scaled
@@ -494,7 +494,7 @@ model_step_scaled <- glm(formula(model_step), data = data_7_temp, family = gauss
 summary(model_step_scaled)
 ```
 
-As summary, the coefficient of the model are the following.\
+As a summary, the coefficients of the model are the following.\
 This analysis, compares the measured and unitless (*scaled*) variables.
 
 ```{r}
@@ -525,8 +525,8 @@ regression_table <- function(x, x_scaled, level = 0.95) {
 #  knitr::kable()
 ```
 
-The *scaling*, allows to check the importance of a variable, for example the **TypeChalet adosado** is the one that produces the highest variation of the **Rent**, and also the relation is *negative*. See column *Estimate scaled* (as long the other variables remains constant).\
-The second one, is the **Sq.Mt**, afecting in a positive way.
+The *scaling*, allows to check the importance of a variable, for example the **TypeChalet adosado** is the one that produces the highest variation of the **Rent**, and also has a *negative* relation. See column *Estimate scaled* (as long the other variables remain constant).\
+The second one, is the **Sq.Mt**, affecting rent in a positive way (an increase in m^2 leads to an increase in rent).
 
 ```{r}
 data_8_temp <- summary(model_step_scaled)$coefficients[, 'Estimate']
@@ -538,12 +538,12 @@ ggplot(data=data_8_temp, aes(x=Variable, y=StandardizedCoefficient)) +
   geom_bar(stat="identity") +
   coord_flip()
 ```
-The previous plot, shows the importance per variable in the same unit. Where **Type Chalet adosado** has the biggest impact in the **Rent**, as long the other variables remains constant.\
-The sign tells if the variable affects the **Rent** in a possitive or negative way. That is, one unit of the variable increase or decrease the **Rent**.
+The previous plot shows the importance per variable in the same unit. Where **Type Chalet adosado** has the biggest impact on **Rent**, as long the other variables remain constant.\
+The sign tells if the variable affects the **Rent** in a positive or negative way. That is, one unit of the variable increase or decrease the **Rent**.
 
 # Good opportunities
 
-Following, there is a list of the top 15 properties with *Real* price bellow their theoretical *Predicted* price.\
+Following, there is a list of the top 15 properties with *Real* price below their theoretical *Predicted* price.\
 The **Ratio** captures how many times better the *Real* price is compared to the *Predicted*.\
 The **Rent** is in *EUR/month*.
 
@@ -565,7 +565,7 @@ data_6_temp %>%
 
 ## Map
 
-Following, are presented the most relevant renting opportunities per **Type**.
+Following the most relevant renting opportunities per **Type** are presented.
 
 ```{r}
 # Labels for the map ----
@@ -581,7 +581,7 @@ data_6_temp$Label <-
 
 ### Piso
 Interesting opportunities for **Piso** or *Flat*.\
-Only showing the ones we were able to geolocate (assign latitude and longitude), and also the ration between estimated rent price and real, is greater than 1x.
+Only showing the ones we were able to geolocate (assign latitude and longitude), and also where the ratio between estimated rent price and real price is greater than 1x.
 
 ```{r}
 data_7_temp <- data_6_temp %>% 
@@ -623,7 +623,7 @@ data_7_temp %>%
 
 ### Estudio
 Interesting opportunities for **Estudio**.\
-These properties, are single-storey.
+These properties are single-storey, meaning the room is on one floor only.
 
 ```{r}
 data_7_temp <- data_6_temp %>% 
